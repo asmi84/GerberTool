@@ -1,0 +1,93 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{38601153-EC40-4BBE-9D1D-EC2E58AF2ED5}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>GerberParser</RootNamespace>
+    <AssemblyName>GerberParser</AssemblyName>
+    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Commands\ApertureDefinitionCommand.cs" />
+    <Compile Include="Commands\ApertureMacroDefinitionCommand.cs" />
+    <Compile Include="Commands\ClockwiseCircularInterpolationCommand.cs" />
+    <Compile Include="Commands\CommendCommand.cs" />
+    <Compile Include="Commands\CoordinateAbsoluteCommand.cs" />
+    <Compile Include="Commands\CoordinateIncrementalCommand.cs" />
+    <Compile Include="Commands\CounterclockwiseCircularInterpolationCommand.cs" />
+    <Compile Include="Commands\CurrentApertureCommand.cs" />
+    <Compile Include="Commands\FileAttributeCommand.cs" />
+    <Compile Include="Commands\FileEndCommand.cs" />
+    <Compile Include="Commands\FormatStatementCommand.cs" />
+    <Compile Include="Commands\GerberCommand.cs" />
+    <Compile Include="Commands\GerberExtendedCommand.cs" />
+    <Compile Include="Commands\GerberFunctionCodeCommand.cs" />
+    <Compile Include="Commands\IContainsUnits.cs" />
+    <Compile Include="Commands\LinearInterpolationCommand.cs" />
+    <Compile Include="Commands\MacroPrimitives\CommentMacroPrimitive.cs" />
+    <Compile Include="Commands\MacroPrimitives\CoordinatePair.cs" />
+    <Compile Include="Commands\MacroPrimitives\MacroPrimitive.cs" />
+    <Compile Include="Commands\MacroPrimitives\MoireMacroPrimitive.cs" />
+    <Compile Include="Commands\MacroPrimitives\OutlineMacroPrimitive.cs" />
+    <Compile Include="Commands\MacroPrimitives\ThermalMacroPrimitive.cs" />
+    <Compile Include="Commands\MirrorCommand.cs" />
+    <Compile Include="Commands\MultiQuadrantModeCommand.cs" />
+    <Compile Include="Commands\OperationFlashCommand.cs" />
+    <Compile Include="Commands\OperationInterpolateCommand.cs" />
+    <Compile Include="Commands\OperationMoveCommand.cs" />
+    <Compile Include="Commands\PolarityCommand.cs" />
+    <Compile Include="Commands\RegionBeginCommand.cs" />
+    <Compile Include="Commands\RegionEndCommand.cs" />
+    <Compile Include="Commands\RotationCommand.cs" />
+    <Compile Include="Commands\ScaleCommand.cs" />
+    <Compile Include="Commands\SingleQuadrantModeCommand.cs" />
+    <Compile Include="Commands\UnitCommand.cs" />
+    <Compile Include="Commands\UnitInchCommand.cs" />
+    <Compile Include="Commands\UnitMetricCommand.cs" />
+    <Compile Include="GerberFileObject.cs" />
+    <Compile Include="GerberFileProcessor.cs" />
+    <Compile Include="GerberFileRender.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
