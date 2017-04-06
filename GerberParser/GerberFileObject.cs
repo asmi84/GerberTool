@@ -15,10 +15,10 @@ namespace GerberParser
 
         public string FileName { get; private set; }
 
-        public decimal IntPrecision { get; private set; }
-        public decimal DecPrecision { get; private set; }
+        public int IntPrecision { get; set; }
+        public int DecPrecision { get; set; }
 
-        public decimal Divisor { get; private set; }
+        public decimal Divisor { get; set; }
         public bool IsMetric { get; set; }
 
         public bool ReadFile(string filename)

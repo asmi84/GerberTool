@@ -118,6 +118,7 @@ namespace GerberParser
                     intf.MultiplyBy(scaleFactor);
                 }
             }
+            fileObject.IsMetric = toMetric;
         }
 
         public static void Transpose(GerberFileObject obj, decimal offsetX, decimal offsetY)
@@ -137,20 +138,15 @@ namespace GerberParser
 
         public static GerberFileObject MergeFiles(GerberFileObject mainObj, GerberFileObject secondObj, decimal offsetX, decimal offsetY)
         {
-            //method assumes both objects are same units
-            //ApertureDefinitionCommand
-            if (mainObj.IsMetric != secondObj.IsMetric)
-            {
-                if (!mainObj.IsMetric)
-                    ConvertUnits(mainObj, true);
-                else if (!secondObj.IsMetric)
-                    ConvertUnits(secondObj, true);
-            }
+            if (!mainObj.IsMetric)
+                ConvertUnits(mainObj, true);
+            else if (!secondObj.IsMetric)
+                ConvertUnits(secondObj, true);
 
             decimal minX, maxX, minY, maxY;
             CalculateExtents(secondObj, out minX, out maxX, out minY, out maxY);
-            offsetX -= minX - 10.0m;
-            offsetY -= minY - 10.0m;
+            offsetX -= minX;
+            offsetY -= minY;
 
             offsetX *= mainObj.Divisor;
             offsetY *= mainObj.Divisor;
@@ -219,8 +215,12 @@ namespace GerberParser
             }
 
             var resultObj = new GerberFileObject();
+            resultObj.IsMetric = true;
+            resultObj.IntPrecision = 4;
+            resultObj.DecPrecision = 6;
+            resultObj.Divisor = mainObj.Divisor;
             resultObj.Commands.Add(UnitCommand.Init(true));
-            resultObj.Commands.Add(FormatStatementCommand.Init(4, 6));
+            resultObj.Commands.Add(FormatStatementCommand.Init(resultObj.IntPrecision, resultObj.DecPrecision));
 
             foreach (var amCmd in apMacros.Values)
             {
@@ -232,22 +232,24 @@ namespace GerberParser
                 resultObj.Commands.Add(apCmd);
             }
 
+            //these commands are already added above
             var excludeCmd = new HashSet<string>
             {
                 "G04", //comment
                 "MO",  //unit
+                "AM",  //aperture macro
                 "AD",  //aperture define
                 "FS"   //format specifier
             };
 
-            foreach (var cmd in mainObj.Commands.SkipWhile(x => excludeCmd.Contains(x.CommandCode) || x.IsObsolete()))
+            foreach (var cmd in mainObj.Commands.Where(x => !excludeCmd.Contains(x.CommandCode) && !x.IsObsolete()))
             {
                 if (cmd is FileEndCommand)
                     continue;
                 resultObj.Commands.Add(cmd);
             }
 
-            foreach (var cmd in secondObj.Commands.SkipWhile(x => excludeCmd.Contains(x.CommandCode) || x.IsObsolete()))
+            foreach (var cmd in secondObj.Commands.Where(x => !excludeCmd.Contains(x.CommandCode) && !x.IsObsolete()))
             {
                 if (cmd is CurrentApertureCommand)
                 {
