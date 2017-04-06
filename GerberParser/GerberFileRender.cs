@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using GerberParser.Commands;
 using GerberParser.Commands.MacroPrimitives;
 
@@ -16,7 +17,9 @@ namespace GerberParser
             return isSolid ? Brushes.Green : Brushes.Black;
         }
 
-        public static void CreateImage(GerberFileObject fileObject, int scale)
+        private const int MAX_IMG_SIZE = 20000;
+
+        public static void CreateImage(GerberFileObject fileObject, decimal scale, string destFileName)
         {
             decimal minX, maxX, minY, maxY;
             GerberFileProcessor.CalculateExtents(fileObject, out minX, out maxX, out minY, out maxY);
@@ -31,7 +34,19 @@ namespace GerberParser
 
             var sizeX = (int)Math.Round((maxX - minX + border * 2) * scale);
             var sizeY = (int)Math.Round((maxY - minY + border * 2) * scale);
-            var img = new Bitmap(sizeX, sizeY);
+            if (sizeY > MAX_IMG_SIZE || sizeX > MAX_IMG_SIZE)
+            {
+                throw new Exception("ERROR - the image is too large, recude scale.");
+            }
+            Bitmap img;
+            try
+            {
+                img = new Bitmap(sizeX, sizeY);
+            }
+            catch (Exception)
+            {
+                throw new Exception("ERROR - the image is too large, recude scale.");
+            }
             var gx = Graphics.FromImage(img);
             gx.Clear(Color.Black);
             state.GraphObject = gx;
@@ -54,7 +69,7 @@ namespace GerberParser
                 ProcessCommand(cmd as OperationMoveCommand, state);
                 ProcessCommand(cmd as OperationFlashCommand, state);
             }
-            img.Save("test.bmp");
+            img.Save(destFileName, ImageFormat.Png);
         }
 
         private static void ProcessCommand(FormatStatementCommand cmd, GraphicsState state)
@@ -153,6 +168,64 @@ namespace GerberParser
             state.CurrentRegion.Reset();
         }
 
+        private static Pen CreatePenForCurrentAperture(GraphicsState state)
+        {
+            var currAp = state.Apertures[state.CurrentApertureNumber];
+            Pen pen;
+            switch (currAp.Template)
+            {
+                case "C":
+                case "P":
+                    pen = new Pen(GetBrushColor(state.IsDarkPolarity), (float)state.ScaleByRenderScale(currAp.Diameter));
+                    break;
+                case "R":
+                case "O":
+                    pen = new Pen(GetBrushColor(state.IsDarkPolarity),
+                        (float)state.ScaleByRenderScale(Math.Max(currAp.SizeX, currAp.SizeY)));
+                    break;
+                default:
+                    pen = new Pen(GetBrushColor(state.IsDarkPolarity), 1);
+                    break;
+            }
+            return pen;
+        }
+
+        private static CoordinatePair FindCenterPoint(CoordinatePair beginPoint, CoordinatePair cmdPoint, OperationInterpolateCommand cmd, InterpolationMode mode)
+        {
+            var centerCandidates = new CoordinatePair[4];
+            centerCandidates[0] = new CoordinatePair
+            {
+                X = beginPoint.X - cmd.OffsetX,
+                Y = beginPoint.Y - cmd.OffsetY
+            };
+            centerCandidates[1] = new CoordinatePair
+            {
+                X = beginPoint.X - cmd.OffsetX,
+                Y = beginPoint.Y + cmd.OffsetY
+            };
+            centerCandidates[2] = new CoordinatePair
+            {
+                X = beginPoint.X + cmd.OffsetX,
+                Y = beginPoint.Y - cmd.OffsetY
+            };
+            centerCandidates[3] = new CoordinatePair
+            {
+                X = beginPoint.X + cmd.OffsetX,
+                Y = beginPoint.Y + cmd.OffsetY
+            };
+            foreach (var candidate in centerCandidates)
+            {
+                double angle = CalculateAngle(candidate, beginPoint, cmdPoint);
+                if (angle != 0.0 && (mode == InterpolationMode.ClockwiseCircular)
+                    ? (angle > 0.0)
+                    : (angle < 0.0) && Math.Abs(angle) <= Math.PI / 2)
+                {
+                    return candidate;
+                }
+            }
+            return null;
+        }
+
         private static void ProcessCommand(OperationInterpolateCommand cmd, GraphicsState state)
         {
             if (cmd == null)
@@ -160,196 +233,62 @@ namespace GerberParser
             var origPtX = cmd.HasX ? cmd.X : state.CurrentX;
             var origPtY = cmd.HasY ? cmd.Y : state.CurrentY;
             var pt = state.CalcCoords(origPtX, origPtY);
-            if (state.IsInsideRegion)
+            if (state.Interpolation == InterpolationMode.Linear)
             {
-                if (state.Interpolation == InterpolationMode.Linear)
+                var currPt = state.CalcCoordsForCurrentPoint();
+                if (state.IsInsideRegion)
                 {
                     state.CurrentRegion.AddLine(state.CalcCoordsForCurrentPoint(), pt);
                 }
                 else
                 {
-                    if (!state.IsMultiQuadrant)
+                    using (var pen = CreatePenForCurrentAperture(state))
                     {
-                        var cmdPoint = new CoordinatePair
-                        {
-                            X = origPtX,
-                            Y = origPtY
-                        };
-                        var beginPoint = state.GetCurrentPoint();
-                        var centerCandidates = new CoordinatePair[4];
-                        centerCandidates[0] = new CoordinatePair
-                        {
-                            X = state.CurrentX - cmd.OffsetX,
-                            Y = state.CurrentY - cmd.OffsetY
-                        };
-                        centerCandidates[1] = new CoordinatePair
-                        {
-                            X = state.CurrentX - cmd.OffsetX,
-                            Y = state.CurrentY + cmd.OffsetY
-                        };
-                        centerCandidates[2] = new CoordinatePair
-                        {
-                            X = state.CurrentX + cmd.OffsetX,
-                            Y = state.CurrentY - cmd.OffsetY
-                        };
-                        centerCandidates[3] = new CoordinatePair
-                        {
-                            X = state.CurrentX + cmd.OffsetX,
-                            Y = state.CurrentY + cmd.OffsetY
-                        };
-                        Rectangle rect;
-                        float angleF, sweep;
-                        double angle = CalculateAngle(centerCandidates[0], beginPoint, cmdPoint);
-                        if (angle != 0.0 && (state.Interpolation == InterpolationMode.ClockwiseCircular)
-                            ? (angle > 0.0)
-                            : (angle < 0.0))
-                        {
-                            CalculateArc(centerCandidates[0], beginPoint, cmdPoint, state, out angleF, out sweep, out rect);
-                            state.CurrentRegion.AddArc(rect, angleF, sweep);
-                            goto end;
-                        }
-                        angle = CalculateAngle(centerCandidates[1], beginPoint, cmdPoint);
-                        if (angle != 0.0 && (state.Interpolation == InterpolationMode.ClockwiseCircular)
-                            ? (angle > 0.0)
-                            : (angle < 0.0))
-                        {
-                            CalculateArc(centerCandidates[1], beginPoint, cmdPoint, state, out angleF, out sweep, out rect);
-                            state.CurrentRegion.AddArc(rect, angleF, sweep);
-                            goto end;
-                        }
-                        angle = CalculateAngle(centerCandidates[2], beginPoint, cmdPoint);
-                        if (angle != 0.0 && (state.Interpolation == InterpolationMode.ClockwiseCircular)
-                            ? (angle > 0.0)
-                            : (angle < 0.0))
-                        {
-                            CalculateArc(centerCandidates[2], beginPoint, cmdPoint, state, out angleF, out sweep, out rect);
-                            state.CurrentRegion.AddArc(rect, angleF, sweep);
-                            goto end;
-                        }
-                        angle = CalculateAngle(centerCandidates[3], beginPoint, cmdPoint);
-                        if (angle != 0.0 && (state.Interpolation == InterpolationMode.ClockwiseCircular)
-                            ? (angle > 0.0)
-                            : (angle < 0.0))
-                        {
-                            CalculateArc(centerCandidates[3], beginPoint, cmdPoint, state, out angleF, out sweep, out rect);
-                            state.CurrentRegion.AddArc(rect, angleF, sweep);
-                            goto end;
-                        }
-                        end:
-                        ;
-                    }
-                    else
-                    {
-                        var cmdPoint = new CoordinatePair
-                        {
-                            X = origPtX,
-                            Y = origPtY
-                        };
-                        var beginPoint = state.GetCurrentPoint();
-                        var center = new CoordinatePair
-                        {
-                            X = state.CurrentX + cmd.OffsetX,
-                            Y = state.CurrentY + cmd.OffsetY
-                        };
-                        Rectangle rect;
-                        float angle, sweep;
-                        CalculateArc(center, beginPoint, cmdPoint, state, out angle, out sweep, out rect);
-                        state.CurrentRegion.AddArc(rect, -angle, sweep);
+                        state.GraphObject.DrawLine(pen, currPt, pt);
+                        DrawCurrentAperture(state, state.CurrentX, state.CurrentY);
+                        DrawCurrentAperture(state, origPtX, origPtY);
                     }
                 }
-                //state.CurrentRegion.AddA
             }
             else
             {
-                var currAp = state.Apertures[state.CurrentApertureNumber];
-                Pen pen;
-                switch (currAp.Template)
+                CoordinatePair center;
+                Rectangle rect;
+                float angleF, sweep;
+                var cmdPoint = new CoordinatePair
                 {
-                    case "C":
-                        pen = new Pen(GetBrushColor(state.IsDarkPolarity), (float)state.ScaleByRenderScale(currAp.Diameter));
-                        break;
-                    case "R":
-                        pen = new Pen(GetBrushColor(state.IsDarkPolarity),
-                            (float)state.ScaleByRenderScale(Math.Max(currAp.SizeX, currAp.SizeY)));
-                        break;
-                    default:
-                        pen = new Pen(GetBrushColor(state.IsDarkPolarity), 1);
-                        break;
-                }
-                if (state.Interpolation == InterpolationMode.Linear)
+                    X = origPtX,
+                    Y = origPtY
+                };
+                var beginPoint = state.GetCurrentPoint();
+                if (!state.IsMultiQuadrant)
                 {
-                    var currPt = state.CalcCoordsForCurrentPoint();
-                    state.GraphObject.DrawLine(pen, currPt, pt);
-                    DrawCurrentAperture(state, state.CurrentX, state.CurrentY);
-                    DrawCurrentAperture(state, origPtX, origPtY);
+                    center = FindCenterPoint(beginPoint, cmdPoint, cmd, state.Interpolation);
                 }
                 else
                 {
-                    if (!state.IsMultiQuadrant)
+                    center = new CoordinatePair
                     {
-                        var cmdPoint = new CoordinatePair
-                        {
-                            X = origPtX,
-                            Y = origPtY
-                        };
-                        var beginPoint = state.GetCurrentPoint();
-                        var centerCandidates = new CoordinatePair[4];
-                        centerCandidates[0] = new CoordinatePair
-                        {
-                            X = state.CurrentX - cmd.OffsetX,
-                            Y = state.CurrentY - cmd.OffsetY
-                        };
-                        centerCandidates[1] = new CoordinatePair
-                        {
-                            X = state.CurrentX - cmd.OffsetX,
-                            Y = state.CurrentY + cmd.OffsetY
-                        };
-                        centerCandidates[2] = new CoordinatePair
-                        {
-                            X = state.CurrentX + cmd.OffsetX,
-                            Y = state.CurrentY - cmd.OffsetY
-                        };
-                        centerCandidates[3] = new CoordinatePair
-                        {
-                            X = state.CurrentX + cmd.OffsetX,
-                            Y = state.CurrentY + cmd.OffsetY
-                        };
-                        var angle = CalculateAngle(centerCandidates[0], beginPoint, cmdPoint);
-                        angle = CalculateAngle(centerCandidates[1], beginPoint, cmdPoint);
-                        angle = CalculateAngle(centerCandidates[2], beginPoint, cmdPoint);
-                        angle = CalculateAngle(centerCandidates[3], beginPoint, cmdPoint);
-                    }
-                    else
+                        X = state.CurrentX + cmd.OffsetX,
+                        Y = state.CurrentY + cmd.OffsetY
+                    };
+                }
+                CalculateArc(center, beginPoint, cmdPoint, state, out angleF, out sweep, out rect);
+                if (state.IsInsideRegion)
+                {
+                    state.CurrentRegion.AddArc(rect, -angleF, sweep);
+                }
+                else
+                {
+                    using (var pen = CreatePenForCurrentAperture(state))
                     {
-                        var cmdPoint = new CoordinatePair
-                        {
-                            X = origPtX,
-                            Y = origPtY
-                        };
-                        var beginPoint = state.GetCurrentPoint();
-                        var center = new CoordinatePair
-                        {
-                            X = state.CurrentX + cmd.OffsetX,
-                            Y = state.CurrentY + cmd.OffsetY
-                        };
-                        Rectangle rect;
-                        float angle, sweep;
-                        if (count == 0)
-                        {
-                            CalculateArc(center, beginPoint, cmdPoint, state, out angle, out sweep, out rect);
-                            state.GraphObject.DrawArc(pen, rect, -angle, sweep);
-                        }
-                        count++;
+                        state.GraphObject.DrawArc(pen, rect, -angleF, sweep);
                     }
-                    pen.Dispose();
-                    //state.GraphObject.d
                 }
             }
             state.CurrentX = origPtX;
             state.CurrentY = origPtY;
         }
-
-        private static int count = 0;
 
         private static double CalculateAngle(CoordinatePair center, CoordinatePair p1, CoordinatePair p2)
         {
@@ -394,8 +333,8 @@ namespace GerberParser
             double radius, angle1, angle2;
             CalculateAngle(center, p1, p2, out radius, out angle1, out angle2);
             angle2 = angle1 - angle2;
-            /*if (angle2 == 0.0)
-                angle2 = Math.PI * 2;*/
+            if (angle2 == 0.0)
+                angle2 = Math.PI * 2;
             if ((state.Interpolation == InterpolationMode.ClockwiseCircular && angle2 < 0) ||
                 (state.Interpolation == InterpolationMode.CounterclockwiseCircular && angle2 > 0))
             {
