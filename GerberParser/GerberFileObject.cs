@@ -24,6 +24,7 @@ namespace GerberParser
         public bool ReadFile(string filename)
         {
             FileName = filename;
+            IsMetric = true;
             var data = File.ReadAllText(filename);
             int idx = 0;
             GerberCommand cmd;

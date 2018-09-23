@@ -36,6 +36,8 @@ namespace GerberParser.Commands
 
         public virtual bool IsObsolete()
         {
+            if (GetType() == typeof (GerberExtendedCommand))
+                return true;
             return false;
         }
     }

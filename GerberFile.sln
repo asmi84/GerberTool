@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GerberParser", "GerberParse
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GerberFileConsole", "GerberFileConsole\GerberFileConsole.csproj", "{295058BC-C59A-482A-9524-642FA904E5DC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AssemblyFileGenerator", "AssemblyFileGenerator\AssemblyFileGenerator.csproj", "{F4748B5B-2A61-40C6-B9A6-B127D056EE5F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{295058BC-C59A-482A-9524-642FA904E5DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{295058BC-C59A-482A-9524-642FA904E5DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{295058BC-C59A-482A-9524-642FA904E5DC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F4748B5B-2A61-40C6-B9A6-B127D056EE5F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F4748B5B-2A61-40C6-B9A6-B127D056EE5F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F4748B5B-2A61-40C6-B9A6-B127D056EE5F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F4748B5B-2A61-40C6-B9A6-B127D056EE5F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

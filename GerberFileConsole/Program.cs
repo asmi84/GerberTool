@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -157,7 +158,8 @@ namespace GerberFileConsole
             obj.ReadFile(fname);
             try
             {
-                GerberFileRender.CreateImage(obj, scale, resultName);
+                var fileRender = new GerberFileRender(Color.Red, Color.Black);
+                fileRender.CreateImage(obj, scale, resultName);
             }
             catch (Exception ex)
             {

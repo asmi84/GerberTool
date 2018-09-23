@@ -65,6 +65,9 @@ namespace GerberParser.Commands.MacroPrimitives
                 case ThermalMacroPrimitive.CODE:
                     result = new ThermalMacroPrimitive();
                     break;
+                case CenterLineMacroPrimitive.CODE:
+                    result = new CenterLineMacroPrimitive();
+                    break;
             }
             if (result == null)
             {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -8,23 +9,54 @@ using GerberParser.Commands.MacroPrimitives;
 
 namespace GerberParser
 {
-    public static class GerberFileRender
+    public class GerberFileRender : IDisposable
     {
 
+        private readonly Brush _activeBrush;
+        private readonly Brush _inactiveBrush;
+        private readonly Color _bgColor;
 
-        private static Brush GetBrushColor(bool isSolid)
+        public GerberFileRender()
         {
-            return isSolid ? Brushes.Green : Brushes.Black;
+            _activeBrush = new SolidBrush(Color.FromArgb(100, 0, 128, 0));
+            _bgColor = Color.FromArgb(0, 0, 0, 0);
+            _inactiveBrush = new SolidBrush(_bgColor);
+        }
+
+        public GerberFileRender(Color activeColor, Color inactiveColor)
+        {
+            _activeBrush = new SolidBrush(activeColor);
+            _bgColor = inactiveColor;
+            _inactiveBrush = new SolidBrush(_bgColor);
+        }
+
+        private Brush GetBrushColor(bool isSolid)
+        {
+            return isSolid ? _activeBrush : _inactiveBrush; //Brushes.Green : Brushes.Black;
         }
 
         private const int MAX_IMG_SIZE = 20000;
 
-        public static void CreateImage(GerberFileObject fileObject, decimal scale, string destFileName)
+        public void CreateImage(GerberFileObject fileObject, decimal scale, string destFileName)
+        {
+            using (var img = CreateImageBitmap(fileObject, scale))
+            {
+                //img.RotateFlip(RotateFlipType.RotateNoneFlipX);
+                img.Save(destFileName, ImageFormat.Png);
+            }
+        }
+
+        public Bitmap CreateImageBitmap(GerberFileObject fileObject, decimal scale)
         {
             decimal minX, maxX, minY, maxY;
             GerberFileProcessor.CalculateExtents(fileObject, out minX, out maxX, out minY, out maxY);
+            return CreateImageBitmap(fileObject, scale, minX, maxX, minY, maxY);
+        }
+        public Bitmap CreateImageBitmap(GerberFileObject fileObject, decimal scale, decimal minX, decimal maxX, decimal minY, decimal maxY)
+        {
 
-            var border = fileObject.IsMetric ? 10.0m : 0.5m;
+            //var border = fileObject.IsMetric ? 5.0m : 0.2m;
+            var border = 0m;
 
             var offsetX = -minX;
             var offsetY = -minY;
@@ -48,7 +80,7 @@ namespace GerberParser
                 throw new Exception("ERROR - the image is too large, recude scale.");
             }
             var gx = Graphics.FromImage(img);
-            gx.Clear(Color.Black);
+            gx.Clear(_bgColor);
             state.GraphObject = gx;
 
             foreach (var cmd in fileObject.Commands)
@@ -69,10 +101,11 @@ namespace GerberParser
                 ProcessCommand(cmd as OperationMoveCommand, state);
                 ProcessCommand(cmd as OperationFlashCommand, state);
             }
-            img.Save(destFileName, ImageFormat.Png);
+            gx.Dispose();
+            return img;
         }
 
-        private static void ProcessCommand(FormatStatementCommand cmd, GraphicsState state)
+        private void ProcessCommand(FormatStatementCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
@@ -80,56 +113,56 @@ namespace GerberParser
             state.DecPrecision = cmd.DecimalPositions;
         }
 
-        private static void ProcessCommand(ApertureDefinitionCommand cmd, GraphicsState state)
+        private void ProcessCommand(ApertureDefinitionCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
             state.Apertures.Add(cmd.Number, cmd);
         }
 
-        private static void ProcessCommand(ApertureMacroDefinitionCommand cmd, GraphicsState state)
+        private void ProcessCommand(ApertureMacroDefinitionCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
             state.ApertureMacros.Add(cmd.Name, cmd);
         }
 
-        private static void ProcessCommand(PolarityCommand cmd, GraphicsState state)
+        private void ProcessCommand(PolarityCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
             state.IsDarkPolarity = cmd.IsDark;
         }
 
-        private static void ProcessCommand(LinearInterpolationCommand cmd, GraphicsState state)
+        private void ProcessCommand(LinearInterpolationCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
             state.Interpolation = InterpolationMode.Linear;
         }
 
-        private static void ProcessCommand(ClockwiseCircularInterpolationCommand cmd, GraphicsState state)
+        private void ProcessCommand(ClockwiseCircularInterpolationCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
             state.Interpolation = InterpolationMode.ClockwiseCircular;
         }
 
-        private static void ProcessCommand(CounterclockwiseCircularInterpolationCommand cmd, GraphicsState state)
+        private void ProcessCommand(CounterclockwiseCircularInterpolationCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
             state.Interpolation = InterpolationMode.CounterclockwiseCircular;
         }
 
-        private static void ProcessCommand(SingleQuadrantModeCommand cmd, GraphicsState state)
+        private void ProcessCommand(SingleQuadrantModeCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
             state.IsMultiQuadrant = false;
         }
 
-        private static void ProcessCommand(MultiQuadrantModeCommand cmd, GraphicsState state)
+        private void ProcessCommand(MultiQuadrantModeCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
@@ -143,14 +176,14 @@ namespace GerberParser
             state.CurrentApertureNumber = cmd.Number;
         }
 
-        private static void ProcessCommand(RegionBeginCommand cmd, GraphicsState state)
+        private void ProcessCommand(RegionBeginCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
             state.IsInsideRegion = true;
         }
 
-        private static void ProcessCommand(RegionEndCommand cmd, GraphicsState state)
+        private void ProcessCommand(RegionEndCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
@@ -158,7 +191,7 @@ namespace GerberParser
             DrawRegion(state);
         }
 
-        private static void DrawRegion(GraphicsState state)
+        private void DrawRegion(GraphicsState state)
         {
             if (state.CurrentRegion.PointCount == 0)
                 return;
@@ -168,7 +201,7 @@ namespace GerberParser
             state.CurrentRegion.Reset();
         }
 
-        private static Pen CreatePenForCurrentAperture(GraphicsState state)
+        private Pen CreatePenForCurrentAperture(GraphicsState state)
         {
             var currAp = state.Apertures[state.CurrentApertureNumber];
             Pen pen;
@@ -190,7 +223,7 @@ namespace GerberParser
             return pen;
         }
 
-        private static CoordinatePair FindCenterPoint(CoordinatePair beginPoint, CoordinatePair cmdPoint, OperationInterpolateCommand cmd, InterpolationMode mode)
+        private CoordinatePair FindCenterPoint(CoordinatePair beginPoint, CoordinatePair cmdPoint, OperationInterpolateCommand cmd, InterpolationMode mode)
         {
             var centerCandidates = new CoordinatePair[4];
             centerCandidates[0] = new CoordinatePair
@@ -226,7 +259,7 @@ namespace GerberParser
             return null;
         }
 
-        private static void ProcessCommand(OperationInterpolateCommand cmd, GraphicsState state)
+        private void ProcessCommand(OperationInterpolateCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
@@ -269,20 +302,24 @@ namespace GerberParser
                 {
                     center = new CoordinatePair
                     {
+                        /*X = state.CurrentX + (state.Interpolation == InterpolationMode.ClockwiseCircular ? cmd.OffsetX : -cmd.OffsetX),
+                        Y = state.CurrentY + (state.Interpolation == InterpolationMode.ClockwiseCircular ? cmd.OffsetY : -cmd.OffsetY)*/
                         X = state.CurrentX + cmd.OffsetX,
                         Y = state.CurrentY + cmd.OffsetY
                     };
                 }
                 CalculateArc(center, beginPoint, cmdPoint, state, out angleF, out sweep, out rect);
+                if (sweep == 0)
+                    sweep = state.Interpolation == InterpolationMode.ClockwiseCircular ? 360.0f : -360.0f;
                 if (state.IsInsideRegion)
                 {
-                    state.CurrentRegion.AddArc(rect, -angleF, sweep);
+                    state.CurrentRegion.AddArc(rect, angleF, sweep);
                 }
                 else
                 {
                     using (var pen = CreatePenForCurrentAperture(state))
                     {
-                        state.GraphObject.DrawArc(pen, rect, -angleF, sweep);
+                        state.GraphObject.DrawArc(pen, rect, angleF, sweep);
                     }
                 }
             }
@@ -300,12 +337,14 @@ namespace GerberParser
                 //invalid arc
                 return 0.0;
             }
-            var angle1 = Math.Asin((double)vp1.Y / rad);
+            double radius, angle1, angle2;
+            CalculateAngle(center, p1, p2, out radius, out angle1, out angle2);
+            /*var angle1 = Math.Asin((double)vp1.Y / rad);
             if (angle1 == 0.0 && vp1.X < 0)
                 angle1 = Math.PI;
             var angle2 = Math.Asin((double)vp2.Y / rad);
             if (angle2 == 0.0 && vp2.X < 0)
-                angle2 = Math.PI;
+                angle2 = Math.PI;*/
             return angle1 - angle2;
         }
 
@@ -314,17 +353,85 @@ namespace GerberParser
             return Math.Sqrt((double)(c.X * c.X) + (double)(c.Y * c.Y));
         }
 
+        private static double Saturate(double val, double min, double max)
+        {
+            return val < min ? min : (val > max ? max : val);
+        }
+
+        private static double CalculateAngle(CoordinatePair vec)
+        {
+            var x = (double)vec.X;
+            var y = (double)vec.Y;
+            /*if (x > 0)
+            {
+                if (y >= 0)
+                    return Math.Atan(y / x);
+                else
+                    return Math.Atan(y / x) + Math.PI * 2;
+            }
+            else if (x == 0.0)
+            {
+                if (y > 0)
+                    return Math.PI / 2;
+                else if (y == 0)
+                    return Math.PI * 2;
+                else
+                    return 3 * Math.PI / 2;
+            }
+            else
+            {
+                return Math.Atan(y / x) + Math.PI;
+            }*/
+            var res = Math.Atan2(y, x);
+            if (res < 0)
+                res += Math.PI * 2;
+            return res;
+        }
+
         private static void CalculateAngle(CoordinatePair center, CoordinatePair p1, CoordinatePair p2, out double radius, out double angle1, out double angle2)
         {
             var vp1 = p1 - center;
             var vp2 = p2 - center;
             radius = Math.Sqrt((double)(vp1.X * vp1.X) + (double)(vp1.Y * vp1.Y));
-            angle1 = Math.Asin((double)vp1.Y / radius);
+            var rad2 = Math.Sqrt((double)(vp2.X * vp2.X) + (double)(vp2.Y * vp2.Y));
+            radius = Math.Max(radius, rad2);
+
+
+
+            /*var sin1 = Saturate((double)vp1.Y / radius, -1.0, 1.0);
+            var cos1 = Saturate((double)vp1.X / radius, -1.0, 1.0);
+            var asin1 = Math.Asin(sin1);
+            var acos1 = Math.Acos(cos1);
+            angle1 = asin1;
+            if (angle1 <= 0)
+                angle1 = acos1;*/
+            angle1 = CalculateAngle(vp1);
+            angle1 = Math.PI * 2 - angle1;
+
+            /*var sin2 = Saturate((double)vp2.Y / radius, -1.0, 1.0);
+            var cos2 = Saturate((double)vp2.X / radius, -1.0, 1.0);
+            var asin2 = Math.Asin(sin2);
+            var acos2 = Math.Acos(cos2);
+            angle2 = asin2;
+            if (angle2 <= 0)
+                angle2 = acos2;*/
+            angle2 = CalculateAngle(vp2);
+            angle2 = Math.PI * 2 - angle2;
+            /*angle1 = Math.Asin((double)vp1.Y / radius);
             if (vp1.X < 0)
                 angle1 = Math.PI - angle1;
+            if (angle1 < 0)
+                angle1 += 2 * Math.PI;
             angle2 = Math.Asin((double)vp2.Y / radius);
             if (vp2.X < 0)
                 angle2 = Math.PI - angle2;
+            if (angle2 < 0)
+                angle2 += 2 * Math.PI;*/
+
+            var a1 = angle1 * 180.0 / Math.PI;
+            var a2 = angle2 * 180.0 / Math.PI;
+            Debug.WriteLine($"vp1({vp1.X},{vp1.Y}), angle = {a1}");
+            Debug.WriteLine($"vp2({vp2.X},{vp2.Y}), angle = {a2}");
         }
 
         private static void CalculateArc(CoordinatePair center, CoordinatePair p1, CoordinatePair p2, GraphicsState state,
@@ -332,16 +439,26 @@ namespace GerberParser
         {
             double radius, angle1, angle2;
             CalculateAngle(center, p1, p2, out radius, out angle1, out angle2);
-            angle2 = angle1 - angle2;
-            if (angle2 == 0.0)
+            /*if (angle2 == 0.0 && state.Interpolation == InterpolationMode.ClockwiseCircular)
                 angle2 = Math.PI * 2;
+            if (angle1 == 0.0 && state.Interpolation == InterpolationMode.CounterclockwiseCircular)
+                angle1 = Math.PI * 2;*/
+            if (state.Interpolation == InterpolationMode.ClockwiseCircular && angle2 < angle1)
+                angle2 += Math.PI * 2;
+            else if (state.Interpolation == InterpolationMode.CounterclockwiseCircular && angle2 > angle1)
+                angle2 -= Math.PI * 2;
+            angle2 = angle2 - angle1;
             if ((state.Interpolation == InterpolationMode.ClockwiseCircular && angle2 < 0) ||
                 (state.Interpolation == InterpolationMode.CounterclockwiseCircular && angle2 > 0))
             {
-                angle2 = 2 * Math.PI - angle2;
+                //angle2 = -(2 * Math.PI - angle2);
+                1.ToString();
             }
-            if (state.Interpolation == InterpolationMode.CounterclockwiseCircular)
-                angle2 = -angle2;
+            /*if (state.Interpolation == InterpolationMode.ClockwiseCircular && state.IsMultiQuadrant)
+                angle2 = (2 * Math.PI - angle2);*/
+            var a1 = angle1 * 180.0 / Math.PI;
+            var a2 = angle2 * 180.0 / Math.PI;
+            Debug.WriteLine($"start {a1} sweep {a2} int mode {state.Interpolation}");
             var lowPt = state.CalcCoords(center.X - (decimal)radius, center.Y + (decimal)radius);
             var hiPt = state.CalcCoords(center.X + (decimal)radius, center.Y - (decimal)radius);
             if (lowPt.X == hiPt.X)
@@ -351,9 +468,10 @@ namespace GerberParser
             rect = new Rectangle(lowPt.X, lowPt.Y, hiPt.X - lowPt.X, Math.Abs(hiPt.Y - lowPt.Y));
             angle = (float)(angle1 * (180.0 / Math.PI));
             sweep = (float)(angle2 * (180.0 / Math.PI));
+            Debug.WriteLine($"angle {angle}, sweep {sweep}");
         }
 
-        private static void ProcessCommand(OperationMoveCommand cmd, GraphicsState state)
+        private void ProcessCommand(OperationMoveCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
@@ -377,7 +495,7 @@ namespace GerberParser
             state.CurrentY = origPtY;
         }
 
-        private static void ProcessCommand(OperationFlashCommand cmd, GraphicsState state)
+        private void ProcessCommand(OperationFlashCommand cmd, GraphicsState state)
         {
             if (cmd == null)
                 return;
@@ -388,7 +506,7 @@ namespace GerberParser
             state.CurrentY = origPtY;
         }
 
-        private static void DrawCurrentAperture(GraphicsState state, decimal x, decimal y)
+        private void DrawCurrentAperture(GraphicsState state, decimal x, decimal y)
         {
             var currAp = state.Apertures[state.CurrentApertureNumber];
             if (currAp.Template == "C")
@@ -498,7 +616,7 @@ namespace GerberParser
             }
         }
 
-        private static void RenderMacro(ApertureMacroDefinitionCommand cmd, GraphicsState state, decimal x, decimal y)
+        private void RenderMacro(ApertureMacroDefinitionCommand cmd, GraphicsState state, decimal x, decimal y)
         {
             foreach (var primitive in cmd.Primitives)
             {
@@ -510,11 +628,40 @@ namespace GerberParser
                     case ThermalMacroPrimitive.CODE:
                         RenderThermalMacro((ThermalMacroPrimitive) primitive, state, x, y);
                         break;
+                    case OutlineMacroPrimitive.CODE:
+                        RenderOutlineMacro((OutlineMacroPrimitive) primitive, state, x, y);
+                        break;
+                    case CenterLineMacroPrimitive.CODE:
+                        RenderCenterLineMarco((CenterLineMacroPrimitive) primitive, state, x, y);
+                        break;
+                    default:
+                        Console.WriteLine($"ERROR - invalid primitive ID {primitive.Id}");
+                        break;
                 }
             }
         }
 
-        private static void RenderMoireMacro(MoireMacroPrimitive macro, GraphicsState state, decimal x, decimal y)
+        private void RenderCenterLineMarco(CenterLineMacroPrimitive macro, GraphicsState state, decimal x, decimal y)
+        {
+            var center = new CoordinatePair
+            {
+                X = x + macro.Center.X * state.Divisor,
+                Y = y + macro.Center.Y * state.Divisor
+            };
+            var sizeX = state.CalcRelativeCoord(macro.Width * state.Divisor);
+            var sizeY = state.CalcRelativeCoord(macro.Height * state.Divisor);
+            var centerDraw = state.CalcCoords(center.X, center.Y);
+            
+
+            var rect = new Rectangle(-sizeX/2, -sizeY/2, sizeX, sizeY);
+            var mat = state.GraphObject.Transform;
+            state.GraphObject.TranslateTransform(centerDraw.X, centerDraw.Y);
+            state.GraphObject.RotateTransform((float) macro.Rotation);
+            state.GraphObject.FillRectangle(GetBrushColor(state.IsDarkPolarity), rect);
+            state.GraphObject.Transform = mat;
+        }
+
+        private void RenderMoireMacro(MoireMacroPrimitive macro, GraphicsState state, decimal x, decimal y)
         {
             var center = new CoordinatePair
             {
@@ -554,7 +701,7 @@ namespace GerberParser
             }
         }
 
-        private static void RenderThermalMacro(ThermalMacroPrimitive macro, GraphicsState state, decimal x, decimal y)
+        private void RenderThermalMacro(ThermalMacroPrimitive macro, GraphicsState state, decimal x, decimal y)
         {
             var center = new CoordinatePair
             {
@@ -594,6 +741,32 @@ namespace GerberParser
                 mat.TransformPoints(points);
                 state.GraphObject.DrawLine(penGap, points[0], points[1]);
             }
+        }
+
+        private void RenderOutlineMacro(OutlineMacroPrimitive macro, GraphicsState state, decimal x, decimal y)
+        {
+            var points = new List<Point>();
+            foreach (var pt in macro.Points)
+            {
+                points.Add(state.CalcCoords(x + pt.X * state.Divisor, y + pt.Y * state.Divisor));
+            }
+
+            state.GraphObject.FillPolygon(GetBrushColor(true), points.ToArray());
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _activeBrush.Dispose();
+                _inactiveBrush.Dispose();
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         private sealed class GraphicsState

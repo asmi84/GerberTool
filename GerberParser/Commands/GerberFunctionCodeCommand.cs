@@ -35,11 +35,18 @@ namespace GerberParser.Commands
         public static GerberFunctionCodeCommand CreateCommand(ref int index, string data)
         {
             var curr = index;
+            int startIdx = index;
+            if (data.Substring(curr, 3) == "G54")
+            {
+                //get rid of obsolete G54 command prefix
+                curr += 3;
+                startIdx += 3;
+            }
             while (data[curr] != '*')
             {
                 curr++;
             }
-            var cmdText = data.Substring(index, curr - index);
+            var cmdText = data.Substring(startIdx, curr - startIdx);
             var code = ExtractCommandCode(cmdText);
             GerberFunctionCodeCommand cmd = null;
             if (code.StartsWith("D"))
