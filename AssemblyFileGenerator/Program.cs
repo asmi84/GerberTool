@@ -70,7 +70,31 @@ namespace AssemblyFileGenerator
 
         class FootprintComparer : IComparer<string>
         {
+            private readonly bool _isOrcad = false;
+
+            public FootprintComparer(bool isOrcad)
+            {
+                _isOrcad = isOrcad;
+            }
+
             public int Compare(string x, string y)
+            {
+                return _isOrcad ? CompareOrcad(x, y) : CompareKicad(x, y);
+            }
+
+            public int CompareKicad(string x, string y)
+            {
+                var x_smd_passive = x.StartsWith("R_", StringComparison.CurrentCultureIgnoreCase) | x.StartsWith("C_", StringComparison.CurrentCultureIgnoreCase);
+                var y_smd_passive = y.StartsWith("R_", StringComparison.CurrentCultureIgnoreCase) | y.StartsWith("C_", StringComparison.CurrentCultureIgnoreCase);
+                if (x_smd_passive & !y_smd_passive)
+                    return -1;
+                if (!x_smd_passive & y_smd_passive)
+                    return 1;
+                //if (!x_smd_passive && !y_smd_passive)
+                return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);
+            }
+
+            public int CompareOrcad(string x, string y)
             {
                 var x_smd_passive = x.StartsWith("smd_res", StringComparison.CurrentCultureIgnoreCase) | x.StartsWith("smd_cap", StringComparison.CurrentCultureIgnoreCase);
                 var y_smd_passive = y.StartsWith("smd_res", StringComparison.CurrentCultureIgnoreCase) | y.StartsWith("smd_cap", StringComparison.CurrentCultureIgnoreCase);
@@ -88,18 +112,91 @@ namespace AssemblyFileGenerator
             }
         }
 
+        class PnPDataFilter
+        {
+            private readonly string _refTemplate;
+            private readonly bool _isWildcard;
+
+            public PnPDataFilter(string refTemplate)
+            {
+                _isWildcard = false;
+                _refTemplate = refTemplate;
+                if (_refTemplate.EndsWith("*"))
+                {
+                    _isWildcard = true;
+                    _refTemplate = _refTemplate.Replace("*", string.Empty);
+                }
+            }
+
+            public bool Match(string refName)
+            {
+                if (_isWildcard)
+                    return refName.StartsWith(_refTemplate, StringComparison.InvariantCultureIgnoreCase);
+                return refName.Equals(_refTemplate, StringComparison.InvariantCultureIgnoreCase);
+            }
+        }
+
         static void Main(string[] args)
         {
-            var filesFolder = ".\\A100DDR_R1\\";
+            var projName = "S7_Min";
+            var filesFolder = ".\\" + projName + "\\";
+            var isOrcad = false;
+            for(var i = 0; i < args.Length; i++)
+            {
+                switch(args[i])
+                {
+                    case "-proj":
+                        {
+                            if (i < args.Length - 1)
+                            {
+                                projName = args[i + 1];
+                                ++i;
+                            }
+                        }
+                        break;
+                    case "-orcad":
+                        isOrcad = true;
+                        break;
+                    case "-kicad":
+                        isOrcad = false;
+                        break;
+                }
+            }
             HashSet<string> parts = new HashSet<string>();
             if (File.Exists(filesFolder + "Power_parts.txt"))
                 parts = new HashSet<string>(File.ReadAllLines(filesFolder + "Power_parts.txt"));
-            var fileParser = new OrcadFileParser();
-            var pnpData = fileParser.ParseFile(filesFolder + "place_txt.txt");
+
+            var excludeFilter = new List<PnPDataFilter>();
+            if (File.Exists(filesFolder + "Ignore.txt"))
+            {
+                excludeFilter = File.ReadLines(filesFolder + "Ignore.txt").Select(x => new PnPDataFilter(x)).ToList();
+            }
+
+
+            ICADFileParser fileParser;
+            if (isOrcad)
+                fileParser = new OrcadFileParser();
+            else
+                fileParser = new KiCADFileParser();
+
+            var pnpFileName = fileParser.GetDefaultPnPFileName(projName);
+            if (!File.Exists(Path.Combine(filesFolder, pnpFileName)))
+                if (string.IsNullOrEmpty(pnpFileName))
+                {
+                    Console.WriteLine("ERROR - PNP file is not found! Exiting...");
+                    return;
+                }
+
+            var pnpData = fileParser.ParseFile(Path.Combine(filesFolder, pnpFileName));
+
+            pnpData = pnpData.Where(x => excludeFilter.All(l => !l.Match(x.RefDes)))
+                .ToList();
+
             /*pnpData = pnpData.Where(x => parts.Contains(x.RefDes))
                 .ToList();*/
 
-            var bomFileName = Directory.GetFiles(filesFolder, "*.BOM").FirstOrDefault();
+            var bomFileName = Path.Combine(filesFolder, fileParser.GetDefaultBoMFileName(projName));
+            //var bomFileName = Directory.GetFiles(filesFolder, "*.BOM").FirstOrDefault();
             if (string.IsNullOrEmpty(bomFileName))
             {
                 Console.WriteLine("ERROR - BOM file is not found! Exiting...");
@@ -118,18 +215,44 @@ namespace AssemblyFileGenerator
 
             var res = pnpData.GroupBy(x => new { x.FootprintName, x.Value, x.IsTopSide })
                 .Select(x => new PnPFootprintGroup(x.Key.FootprintName, x.Key.Value, x.Key.IsTopSide, x.Count(), x.Select(_ => _.RefDes).ToList(), x.ToList()))
-                .OrderByDescending(x => x.Count).ThenBy(x => x.FootprintName, new FootprintComparer())
+                .OrderByDescending(x => x.Count).ThenBy(x => x.FootprintName, new FootprintComparer(isOrcad))
                 .ToList();
 
-            CreateSideImage(pnpData.Where(x => x.IsTopSide).ToList(), filesFolder + "TOP.art", filesFolder + "SILKSCREEN_TOP.art", false);
-            CreateSideImage(pnpData.Where(x => !x.IsTopSide).ToList(), filesFolder + "BOTTOM.art", filesFolder + "SILKSCREEN_BOTTOM.art", true);
+            var topCopperFileName = Path.Combine(filesFolder, fileParser.GetCopperName(projName, true));
+            if (!File.Exists(topCopperFileName))
+            {
+                Console.WriteLine($"ERROR - top copper file {topCopperFileName} is not found. Exiting...");
+                return;
+            }
+            var topSilkFileName = Path.Combine(filesFolder, fileParser.GetSilkName(projName, true));
+            if (!File.Exists(topSilkFileName))
+            {
+                Console.WriteLine($"ERROR - top silkscreen file {topSilkFileName} is not found. Exiting...");
+                return;
+            }
+
+            var bottomCopperFileName = Path.Combine(filesFolder, fileParser.GetCopperName(projName, false));
+            if (!File.Exists(bottomCopperFileName))
+            {
+                Console.WriteLine($"ERROR - bottom copper file {bottomCopperFileName} is not found. Exiting...");
+                return;
+            }
+            var bottomSilkFileName = Path.Combine(filesFolder, fileParser.GetSilkName(projName, false));
+            if (!File.Exists(bottomSilkFileName))
+            {
+                Console.WriteLine($"ERROR - bottom silkscreen file {bottomSilkFileName} is not found. Exiting...");
+                return;
+            }
+
+            CreateSideImage(pnpData.Where(x => x.IsTopSide).ToList(), topCopperFileName, topSilkFileName, false);
+            CreateSideImage(pnpData.Where(x => !x.IsTopSide).ToList(), bottomCopperFileName, bottomSilkFileName, true);
 
             PdfDocument doc = new PdfDocument();
                 
             Console.WriteLine("Creating pages for top side...");
-            CreatePages(doc, res.Where(x => x.IsTopSide).ToList(), filesFolder + "TOP.art", filesFolder + "SILKSCREEN_TOP.art", false);
+            CreatePages(doc, res.Where(x => x.IsTopSide).ToList(), topCopperFileName, topSilkFileName, false);
             Console.WriteLine("Creating pages for bottom side...");
-            CreatePages(doc, res.Where(x => !x.IsTopSide).ToList(), filesFolder + "BOTTOM.art", filesFolder + "SILKSCREEN_BOTTOM.art", true);
+            CreatePages(doc, res.Where(x => !x.IsTopSide).ToList(), bottomCopperFileName, bottomSilkFileName, true);
 
             doc.Save(filesFolder + "Out.pdf");
 
@@ -187,7 +310,8 @@ namespace AssemblyFileGenerator
                 XBrushes.Yellow,
                 XBrushes.Green,
                 XBrushes.Aqua,
-                XBrushes.Purple
+                XBrushes.Purple,
+                XBrushes.Orange
             };
 
             var colors = new Brush[]
@@ -196,7 +320,8 @@ namespace AssemblyFileGenerator
                 Brushes.Yellow,
                 Brushes.Green,
                 Brushes.Aqua,
-                Brushes.Purple
+                Brushes.Purple,
+                Brushes.Orange
             };
 
             XFont font = new XFont("Consolas", 10, XFontStyle.Regular);
@@ -230,11 +355,11 @@ namespace AssemblyFileGenerator
                     gfx.DrawString(parts[j].FootprintName.Ellipsis(27), font, XBrushes.Black, new XPoint(footprintX, currY));
                     gfx.DrawString(parts[j].Value.Ellipsis(19), font, XBrushes.Black, new XPoint(valueX, currY));
                     gfx.DrawString(parts[j].Count.ToString(), font, XBrushes.Black, new XPoint(countX, currY));
-                    if (parts[j].RefDes.Count <= 10)
+                    const int partsPerLine = 9;
+                    if (parts[j].RefDes.Count <= partsPerLine)
                         gfx.DrawString(string.Join(",", parts[j].RefDes), font, XBrushes.Black, new XPoint(refdesX, currY));
                     else
                     {
-                        const int partsPerLine = 10;
                         var linesCount = parts[j].RefDes.Count / partsPerLine;
                         if (parts[j].RefDes.Count > linesCount * partsPerLine)
                             linesCount++;
@@ -270,6 +395,7 @@ namespace AssemblyFileGenerator
                     gx.Dispose();
                     currIdx++;
                 }
+                Console.WriteLine($"Max currY = {currY}");
                 if (isBottom)
                     currImg.RotateFlip(RotateFlipType.RotateNoneFlipX);
                 var ximgCombinedImg = XImage.FromGdiPlusImage(currImg);

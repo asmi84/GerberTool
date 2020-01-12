@@ -4,7 +4,7 @@ using System.IO;
 
 namespace AssemblyFileGenerator
 {
-    public class OrcadFileParser
+    public class OrcadFileParser : ICADFileParser
     {
         public IList<PnPFileEntry> ParseFile(string fileName)
         {
@@ -68,17 +68,25 @@ namespace AssemblyFileGenerator
             }
             return result;
         }
-    }
 
-    public class PnPFileEntry
-    {
-        public decimal X { get; set; }
-        public decimal Y { get; set; }
+        public string GetDefaultPnPFileName(string projName)
+        {
+            return "place_txt.txt";
+        }
 
-        public int Rotation { get; set; }
-        public bool IsTopSide { get; set; }
-        public string FootprintName { get; set; }
-        public string RefDes { get; set; }
-        public string Value { get; set; }
+        public string GetDefaultBoMFileName(string projName)
+        {
+            return projName + ".BOM";
+        }
+
+        public string GetSilkName(string projName, bool isTop)
+        {
+            return isTop ? "SILKSCREEN_TOP.art" : "SILKSCREEN_BOTTOM.art";
+        }
+
+        public string GetCopperName(string projName, bool isTop)
+        {
+            return isTop ? "TOP.art" : "BOTTOM.art";
+        }
     }
 }

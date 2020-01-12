@@ -52,7 +52,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ICADFileParser.cs" />
+    <Compile Include="KiCADFileParser.cs" />
     <Compile Include="OrcadFileParser.cs" />
+    <Compile Include="PnPFileEntry.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
