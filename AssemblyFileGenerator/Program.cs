@@ -139,7 +139,6 @@ namespace AssemblyFileGenerator
         static void Main(string[] args)
         {
             var projName = "S7_Min";
-            var filesFolder = ".\\" + projName + "\\";
             var isOrcad = false;
             for(var i = 0; i < args.Length; i++)
             {
@@ -162,6 +161,7 @@ namespace AssemblyFileGenerator
                         break;
                 }
             }
+            var filesFolder = ".\\" + projName + "\\";
             HashSet<string> parts = new HashSet<string>();
             if (File.Exists(filesFolder + "Power_parts.txt"))
                 parts = new HashSet<string>(File.ReadAllLines(filesFolder + "Power_parts.txt"));
@@ -308,34 +308,50 @@ namespace AssemblyFileGenerator
             {
                 XBrushes.Red,
                 XBrushes.Yellow,
-                XBrushes.Green,
+                XBrushes.DarkGreen,
                 XBrushes.Aqua,
                 XBrushes.Purple,
-                XBrushes.Orange
+                XBrushes.Orange,
+                XBrushes.DarkBlue,
+                XBrushes.SaddleBrown,
+                XBrushes.Fuchsia,
+                XBrushes.Lime,
+                XBrushes.SteelBlue,
+                XBrushes.Black
             };
 
             var colors = new Brush[]
             {
                 Brushes.Red,
                 Brushes.Yellow,
-                Brushes.Green,
+                Brushes.DarkGreen,
                 Brushes.Aqua,
                 Brushes.Purple,
-                Brushes.Orange
+                Brushes.Orange,
+                Brushes.DarkBlue,
+                Brushes.SaddleBrown,
+                Brushes.Fuchsia,
+                Brushes.Lime,
+                Brushes.SteelBlue,
+                Brushes.Black
             };
 
             XFont font = new XFont("Consolas", 10, XFontStyle.Regular);
             PdfOutline outline = null;
 
-            for (int i = 0; i < pagesCount; i++)
+            var currPage = 1;
+
+            var currPart = 0;
+
+            while (currPart < parts.Count)
             {
-                Console.WriteLine($"Creating page {i + 1} of {pagesCount}...");
+                Console.WriteLine($"Creating page {currPage}...");
                 var currImg = combinedImg.Clone(new Rectangle(0, 0, combinedImg.Width, combinedImg.Height), combinedImg.PixelFormat);
                 var page = doc.AddPage();
 
                 if (outline == null)
                     outline = doc.Outlines.Add(isBottom ? "Bottom side" : "Top side", page, true);
-                outline.Outlines.Add($"Page {i + 1}", page, true);
+                outline.Outlines.Add($"Page {currPage}", page, true);
 
                 var gfx = XGraphics.FromPdfPage(page);
 
@@ -347,26 +363,26 @@ namespace AssemblyFileGenerator
                 gfx.DrawString("Count", font, XBrushes.Black, new XPoint(countX, currY));
                 gfx.DrawString("RefDes", font, XBrushes.Black, new XPoint(refdesX, currY));
                 var currIdx = 0;
-                for (int j = i * partsPerPage; j < parts.Count && j < (i + 1) * partsPerPage; j++)
+                while (currY < 220 && currIdx < brushes.Length && currPart < parts.Count)
                 {
                     currY += 15;
                     gfx.DrawRectangle(XPens.Black, brushes[currIdx], new Rectangle(colorX, currY - 7, 25, 7));
 
-                    gfx.DrawString(parts[j].FootprintName.Ellipsis(27), font, XBrushes.Black, new XPoint(footprintX, currY));
-                    gfx.DrawString(parts[j].Value.Ellipsis(19), font, XBrushes.Black, new XPoint(valueX, currY));
-                    gfx.DrawString(parts[j].Count.ToString(), font, XBrushes.Black, new XPoint(countX, currY));
+                    gfx.DrawString(parts[currPart].FootprintName.Ellipsis(27), font, XBrushes.Black, new XPoint(footprintX, currY));
+                    gfx.DrawString(parts[currPart].Value.Ellipsis(19), font, XBrushes.Black, new XPoint(valueX, currY));
+                    gfx.DrawString(parts[currPart].Count.ToString(), font, XBrushes.Black, new XPoint(countX, currY));
                     const int partsPerLine = 9;
-                    if (parts[j].RefDes.Count <= partsPerLine)
-                        gfx.DrawString(string.Join(",", parts[j].RefDes), font, XBrushes.Black, new XPoint(refdesX, currY));
+                    if (parts[currPart].RefDes.Count <= partsPerLine)
+                        gfx.DrawString(string.Join(",", parts[currPart].RefDes), font, XBrushes.Black, new XPoint(refdesX, currY));
                     else
                     {
-                        var linesCount = parts[j].RefDes.Count / partsPerLine;
-                        if (parts[j].RefDes.Count > linesCount * partsPerLine)
+                        var linesCount = parts[currPart].RefDes.Count / partsPerLine;
+                        if (parts[currPart].RefDes.Count > linesCount * partsPerLine)
                             linesCount++;
                         for (int k = 0; k < linesCount; k++)
                         {
                             var isLastLine = k == linesCount - 1;
-                            gfx.DrawString(string.Join(",", parts[j].RefDes.Skip(k * partsPerLine).Take(partsPerLine)) + ((!isLastLine) ? "," : ""), 
+                            gfx.DrawString(string.Join(",", parts[currPart].RefDes.Skip(k * partsPerLine).Take(partsPerLine)) + ((!isLastLine) ? "," : ""), 
                                 font, XBrushes.Black, new XPoint(refdesX, currY));
                             if (!isLastLine)
                                 currY += 15;
@@ -375,7 +391,7 @@ namespace AssemblyFileGenerator
 
                     var brush = colors[currIdx];
                     var gx = Graphics.FromImage(currImg);
-                    foreach (var part in parts[j].Parts)
+                    foreach (var part in parts[currPart].Parts)
                     {
                         var partX = (int)((part.X - offsetX) * scaleX);
                         var partY = (int)(combinedImg.Height - ((part.Y - offsetY) * scaleY));
@@ -394,6 +410,7 @@ namespace AssemblyFileGenerator
                     }
                     gx.Dispose();
                     currIdx++;
+                    currPart++;
                 }
                 Console.WriteLine($"Max currY = {currY}");
                 if (isBottom)
@@ -402,6 +419,7 @@ namespace AssemblyFileGenerator
 
                 gfx.DrawImage(ximgCombinedImg, new Rectangle(10, 250, 590, 540));
                 //break;
+                currPage++;
             }
         }
 
