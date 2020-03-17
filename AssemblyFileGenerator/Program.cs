@@ -66,7 +66,8 @@ namespace AssemblyFileGenerator
             }
         }
 
-        private static readonly Regex smd_passive_regex = new Regex("smd_(\\w+)_(\\d{4})", RegexOptions.Compiled);
+        private static readonly Regex orcad_smd_passive_regex = new Regex("smd_(\\w+)_(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex orcad_smd_led_regex = new Regex("led_(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         class FootprintComparer : IComparer<string>
         {
@@ -94,16 +95,37 @@ namespace AssemblyFileGenerator
                 return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);
             }
 
+            private int? TryExtractSMDSize(string str)
+            {
+                var match = orcad_smd_passive_regex.Match(str);
+                if (match.Success)
+                    return int.Parse(match.Groups[2].Value);
+                match = orcad_smd_led_regex.Match(str);
+                if (match.Success)
+                    return int.Parse(match.Groups[1].Value);
+                return null;
+            }
+
             public int CompareOrcad(string x, string y)
             {
-                var x_smd_passive = x.StartsWith("smd_res", StringComparison.CurrentCultureIgnoreCase) | x.StartsWith("smd_cap", StringComparison.CurrentCultureIgnoreCase);
-                var y_smd_passive = y.StartsWith("smd_res", StringComparison.CurrentCultureIgnoreCase) | y.StartsWith("smd_cap", StringComparison.CurrentCultureIgnoreCase);
+                var x_smd_passive = x.StartsWith("smd_res", StringComparison.CurrentCultureIgnoreCase) 
+                    | x.StartsWith("smd_cap", StringComparison.CurrentCultureIgnoreCase) 
+                    | x.StartsWith("led", StringComparison.CurrentCultureIgnoreCase)
+                    | x.StartsWith("smd_bead", StringComparison.CurrentCultureIgnoreCase);
+                var y_smd_passive = y.StartsWith("smd_res", StringComparison.CurrentCultureIgnoreCase) 
+                    | y.StartsWith("smd_cap", StringComparison.CurrentCultureIgnoreCase) 
+                    | y.StartsWith("led", StringComparison.CurrentCultureIgnoreCase)
+                    | y.StartsWith("smd_bead", StringComparison.CurrentCultureIgnoreCase);
                 if (x_smd_passive & !y_smd_passive)
                     return -1;
                 if (!x_smd_passive & y_smd_passive)
                     return 1;
+                var xval = TryExtractSMDSize(x);
+                var yval = TryExtractSMDSize(y);
+                if (xval.HasValue && yval.HasValue)
+                    return xval.Value.CompareTo(yval.Value);
                 //if (!x_smd_passive && !y_smd_passive)
-                    return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);
+                return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);
                 /*var x_m = smd_passive_regex.Match(x);
                 var y_m = smd_passive_regex.Match(y);
                 if (!x_m.Success || !y_m.Success)
@@ -136,10 +158,25 @@ namespace AssemblyFileGenerator
             }
         }
 
+        static void Usage()
+        {
+            Console.WriteLine("Usage:");
+            Console.WriteLine("AssemblyFileGenerator.exe -proj <project_name> -orcad|-kicad [-include_only [file_name]] [-out file_name]");
+        }
+
         static void Main(string[] args)
         {
+            if (args.Length == 0)
+            {
+                Usage();
+                return;
+            }
             var projName = "S7_Min";
+            var outFileName = projName;
             var isOrcad = false;
+            var includeOnly = false;
+            var includeFiles = new List<string>();
+            //var includeFileName = "Include.txt";
             for(var i = 0; i < args.Length; i++)
             {
                 switch(args[i])
@@ -159,12 +196,44 @@ namespace AssemblyFileGenerator
                     case "-kicad":
                         isOrcad = false;
                         break;
+                    case "-inc":
+                    case "-include_only":
+                        includeOnly = true;
+                        if (i < args.Length - 1)
+                        {
+                            includeFiles.Add(args[i + 1]);
+                            ++i;
+                        }
+                        else
+                        {
+                            includeFiles.Add("Include.txt");
+                        }
+                        break;
+                    case "-out":
+                        if (i < args.Length - 1)
+                        {
+                            outFileName = args[i + 1];
+                            ++i;
+                        }
+                        break;
                 }
             }
             var filesFolder = ".\\" + projName + "\\";
             HashSet<string> parts = new HashSet<string>();
-            if (File.Exists(filesFolder + "Power_parts.txt"))
-                parts = new HashSet<string>(File.ReadAllLines(filesFolder + "Power_parts.txt"));
+            if (includeOnly)
+            {
+                foreach (var incFile in includeFiles)
+                {
+                    if (File.Exists(filesFolder + incFile))
+                    {
+                        foreach (var refdes in File.ReadAllLines(filesFolder + incFile))
+                        {
+                            if (!parts.Contains(refdes))
+                                parts.Add(refdes);
+                        }
+                    }
+                }
+            }
 
             var excludeFilter = new List<PnPDataFilter>();
             if (File.Exists(filesFolder + "Ignore.txt"))
@@ -192,8 +261,11 @@ namespace AssemblyFileGenerator
             pnpData = pnpData.Where(x => excludeFilter.All(l => !l.Match(x.RefDes)))
                 .ToList();
 
-            /*pnpData = pnpData.Where(x => parts.Contains(x.RefDes))
-                .ToList();*/
+            if (includeOnly && parts.Count > 0)
+            {
+                pnpData = pnpData.Where(x => parts.Contains(x.RefDes))
+                    .ToList();
+            }
 
             var bomFileName = Path.Combine(filesFolder, fileParser.GetDefaultBoMFileName(projName));
             //var bomFileName = Directory.GetFiles(filesFolder, "*.BOM").FirstOrDefault();
@@ -215,7 +287,7 @@ namespace AssemblyFileGenerator
 
             var res = pnpData.GroupBy(x => new { x.FootprintName, x.Value, x.IsTopSide })
                 .Select(x => new PnPFootprintGroup(x.Key.FootprintName, x.Key.Value, x.Key.IsTopSide, x.Count(), x.Select(_ => _.RefDes).ToList(), x.ToList()))
-                .OrderByDescending(x => x.Count).ThenBy(x => x.FootprintName, new FootprintComparer(isOrcad))
+                .OrderBy(x => x.FootprintName, new FootprintComparer(isOrcad)).ThenByDescending(x => x.Count)
                 .ToList();
 
             var topCopperFileName = Path.Combine(filesFolder, fileParser.GetCopperName(projName, true));
@@ -254,9 +326,10 @@ namespace AssemblyFileGenerator
             Console.WriteLine("Creating pages for bottom side...");
             CreatePages(doc, res.Where(x => !x.IsTopSide).ToList(), bottomCopperFileName, bottomSilkFileName, true);
 
-            doc.Save(filesFolder + "Out.pdf");
+            var resFile = Path.Combine(filesFolder, $"{outFileName}.pdf");
+            doc.Save(resFile);
 
-            Process.Start(filesFolder + "Out.pdf");
+            Process.Start(resFile);
         }
 
         private static void CreateSideImage(IList<PnPFileEntry> parts, string copperName, string silkName, bool isBottom)
@@ -303,6 +376,7 @@ namespace AssemblyFileGenerator
             const int valueX = 200;
             const int countX = 310;
             const int refdesX = 350;
+            const int pageX = 480;
 
             var brushes = new XBrush[]
             {
@@ -362,6 +436,9 @@ namespace AssemblyFileGenerator
                 gfx.DrawString("Value", font, XBrushes.Black, new XPoint(valueX, currY));
                 gfx.DrawString("Count", font, XBrushes.Black, new XPoint(countX, currY));
                 gfx.DrawString("RefDes", font, XBrushes.Black, new XPoint(refdesX, currY));
+
+                var pageStr = "Page " + (isBottom ? "B" : "T") + currPage.ToString();
+                gfx.DrawString(pageStr, font, (isBottom ? XBrushes.Blue : XBrushes.Red), new XPoint(pageX, currY));
                 var currIdx = 0;
                 while (currY < 220 && currIdx < brushes.Length && currPart < parts.Count)
                 {
@@ -400,7 +477,7 @@ namespace AssemblyFileGenerator
                         if (part.FootprintName.Contains("0201"))
                             rect = new Rectangle(-5, -3, 10, 6);
                         else if (part.FootprintName.Contains("0402"))
-                            rect = new Rectangle(-8, -5, 16, 10);
+                            rect = new Rectangle(-10, -5, 20, 10);
 
                         var mat = gx.Transform;
                         gx.TranslateTransform(partX, partY);
@@ -417,7 +494,23 @@ namespace AssemblyFileGenerator
                     currImg.RotateFlip(RotateFlipType.RotateNoneFlipX);
                 var ximgCombinedImg = XImage.FromGdiPlusImage(currImg);
 
-                gfx.DrawImage(ximgCombinedImg, new Rectangle(10, 250, 590, 540));
+                var aspect = (double)currImg.Width / currImg.Height;
+
+                var scaledWidth = 540.0; 
+                var scaledHeight = 540.0;
+                if (aspect > 1.0)
+                {
+                    scaledHeight /= aspect;
+                }
+                else
+                {
+                    scaledWidth /= aspect;
+                }
+
+                var finalWidth = (int)Math.Round(scaledWidth);
+                var finalHeight = (int)Math.Round(scaledHeight);
+
+                gfx.DrawImage(ximgCombinedImg, new Rectangle(20 + 540 - finalWidth, 250 + 540 - finalHeight, finalWidth, finalHeight));
                 //break;
                 currPage++;
             }
