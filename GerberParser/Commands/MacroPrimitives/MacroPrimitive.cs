@@ -56,6 +56,9 @@ namespace GerberParser.Commands.MacroPrimitives
                 case CommentMacroPrimitive.CODE:
                     result = new CommentMacroPrimitive();
                     break;
+                case CircleMacroPrimitive.CODE:
+                    result = new CircleMacroPrimitive();
+                    break;
                 case OutlineMacroPrimitive.CODE:
                     result = new OutlineMacroPrimitive();
                     break;
@@ -77,7 +80,7 @@ namespace GerberParser.Commands.MacroPrimitives
             if (!CodesWithoutPolarity.Contains(code))
                 result.IsSolid = GetNextToken(ref str) == "1";
             result.Load(ref str);
-            if (code != CommentMacroPrimitive.CODE)
+            if (code != CommentMacroPrimitive.CODE && str.Length > 0)
             {
                 result.Rotation = GetNextDecimalToken(ref str);
             }

@@ -27,7 +27,13 @@ namespace GerberParser
         {
             _activeBrush = new SolidBrush(activeColor);
             _bgColor = inactiveColor;
-            _inactiveBrush = new SolidBrush(_bgColor);
+            if (_bgColor.A == 255)
+                _inactiveBrush = new SolidBrush(_bgColor);
+            else
+            {
+                var color = Color.FromArgb(255, _bgColor.R, _bgColor.G, _bgColor.B);
+                _inactiveBrush = new SolidBrush(color);
+            }
         }
 
         private Brush GetBrushColor(bool isSolid)
@@ -622,6 +628,9 @@ namespace GerberParser
             {
                 switch (primitive.Id)
                 {
+                    case CircleMacroPrimitive.CODE:
+                        RenderCircleMacro((CircleMacroPrimitive)primitive, state, x, y);
+                        break;
                     case MoireMacroPrimitive.CODE:
                         RenderMoireMacro((MoireMacroPrimitive) primitive, state, x, y);
                         break;
@@ -639,6 +648,24 @@ namespace GerberParser
                         break;
                 }
             }
+        }
+
+        private void RenderCircleMacro(CircleMacroPrimitive macro, GraphicsState state, decimal x, decimal y)
+        {
+            var center = new CoordinatePair
+            {
+                X = x + macro.Center.X * state.Divisor,
+                Y = y + macro.Center.Y * state.Divisor
+            };
+            var diameter = state.CalcRelativeCoord(macro.Diameter * state.Divisor);
+            var centerDraw = state.CalcCoords(center.X, center.Y);
+
+            var rect = new Rectangle(-diameter / 2, -diameter / 2, diameter, diameter);
+            var mat = state.GraphObject.Transform;
+            state.GraphObject.TranslateTransform(centerDraw.X, centerDraw.Y);
+            state.GraphObject.RotateTransform((float)macro.Rotation);
+            state.GraphObject.FillEllipse(GetBrushColor(state.IsDarkPolarity), rect);
+            state.GraphObject.Transform = mat;
         }
 
         private void RenderCenterLineMarco(CenterLineMacroPrimitive macro, GraphicsState state, decimal x, decimal y)
@@ -783,6 +810,7 @@ namespace GerberParser
                 _renderOffsetX = renderOffsetX;
                 _renderOffsetY = renderOffsetY;
                 CurrentScale = 1;
+                IsDarkPolarity = true;
             }
 
             public Point CalcCoords(decimal x, decimal y)

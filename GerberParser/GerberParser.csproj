@@ -58,6 +58,7 @@
     <Compile Include="Commands\IContainsUnits.cs" />
     <Compile Include="Commands\LinearInterpolationCommand.cs" />
     <Compile Include="Commands\MacroPrimitives\CenterLineMacroPrimitive.cs" />
+    <Compile Include="Commands\MacroPrimitives\CircleMacroPrimitive.cs" />
     <Compile Include="Commands\MacroPrimitives\CommentMacroPrimitive.cs" />
     <Compile Include="Commands\MacroPrimitives\CoordinatePair.cs" />
     <Compile Include="Commands\MacroPrimitives\MacroPrimitive.cs" />

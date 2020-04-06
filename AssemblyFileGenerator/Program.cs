@@ -16,71 +16,28 @@ namespace AssemblyFileGenerator
 {
     static class Program
     {
-        public class PnPFootprintGroup
-        {
-            private readonly string _footprintName;
-            private readonly string _value;
-            private readonly bool _isTopSide;
-            private readonly int _count;
-            private readonly List<string> _refDes;
-            private readonly List<PnPFileEntry> _parts;
-
-            public string FootprintName
-            {
-                get { return _footprintName; }
-            }
-
-            public string Value
-            {
-                get { return _value; }
-            }
-
-            public bool IsTopSide
-            {
-                get { return _isTopSide; }
-            }
-
-            public int Count
-            {
-                get { return _count; }
-            }
-
-            public List<string> RefDes
-            {
-                get { return _refDes; }
-            }
-
-            public List<PnPFileEntry> Parts
-            {
-                get { return _parts; }
-            }
-
-            public PnPFootprintGroup(string footprintName, string value, bool isTopSide, int count, List<string> refDes, List<PnPFileEntry> parts)
-            {
-                _footprintName = footprintName;
-                _value = value;
-                _isTopSide = isTopSide;
-                _count = count;
-                _refDes = refDes;
-                _parts = parts;
-            }
-        }
 
         private static readonly Regex orcad_smd_passive_regex = new Regex("smd_(\\w+)_(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex orcad_smd_led_regex = new Regex("led_(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         class FootprintComparer : IComparer<string>
         {
-            private readonly bool _isOrcad = false;
+            private readonly ProjectType projectType;
 
-            public FootprintComparer(bool isOrcad)
+            public FootprintComparer(ProjectType projType)
             {
-                _isOrcad = isOrcad;
+                projectType = projType;
             }
 
             public int Compare(string x, string y)
             {
-                return _isOrcad ? CompareOrcad(x, y) : CompareKicad(x, y);
+                switch (projectType)
+                {
+                    case ProjectType.Orcad: return CompareOrcad(x, y);
+                    case ProjectType.KiCad: return CompareKicad(x, y);
+                    default: return CompareKicad(x, y);
+                }
+                //return _isOrcad ? CompareOrcad(x, y) : CompareKicad(x, y);
             }
 
             public int CompareKicad(string x, string y)
@@ -161,7 +118,7 @@ namespace AssemblyFileGenerator
         static void Usage()
         {
             Console.WriteLine("Usage:");
-            Console.WriteLine("AssemblyFileGenerator.exe -proj <project_name> -orcad|-kicad [-include_only [file_name]] [-out file_name]");
+            Console.WriteLine("AssemblyFileGenerator.exe -proj <project_name> -orcad|-kicad [-include_only [file_name]] [-out file_name] [-pnp_offset 000x111]");
         }
 
         static void Main(string[] args)
@@ -173,11 +130,13 @@ namespace AssemblyFileGenerator
             }
             var projName = "S7_Min";
             var outFileName = projName;
-            var isOrcad = false;
+            var projType = ProjectType.KiCad;
             var includeOnly = false;
             var includeFiles = new List<string>();
+            var pnpOffsetX = 0.0m;
+            var pnpOffsetY = 0.0m;
             //var includeFileName = "Include.txt";
-            for(var i = 0; i < args.Length; i++)
+            for (var i = 0; i < args.Length; i++)
             {
                 switch(args[i])
                 {
@@ -186,15 +145,19 @@ namespace AssemblyFileGenerator
                             if (i < args.Length - 1)
                             {
                                 projName = args[i + 1];
+                                outFileName = projName;
                                 ++i;
                             }
                         }
                         break;
                     case "-orcad":
-                        isOrcad = true;
+                        projType = ProjectType.Orcad;
                         break;
                     case "-kicad":
-                        isOrcad = false;
+                        projType = ProjectType.KiCad;
+                        break;
+                    case "-altium":
+                        projType = ProjectType.Altium;
                         break;
                     case "-inc":
                     case "-include_only":
@@ -214,6 +177,23 @@ namespace AssemblyFileGenerator
                         {
                             outFileName = args[i + 1];
                             ++i;
+                        }
+                        break;
+                    case "-pnp_offset":
+                        if (i < args.Length - 1)
+                        {
+                            var offsetStr = args[i + 1];
+                            ++i;
+                            if (!offsetStr.Contains("x"))
+                            {
+                                pnpOffsetX = pnpOffsetY = decimal.Parse(offsetStr);
+                            }
+                            else
+                            {
+                                var offsets = offsetStr.Split(new[] { "x" }, StringSplitOptions.RemoveEmptyEntries);
+                                pnpOffsetX = decimal.Parse(offsets[0]);
+                                pnpOffsetY = decimal.Parse(offsets[1]);
+                            }
                         }
                         break;
                 }
@@ -242,11 +222,7 @@ namespace AssemblyFileGenerator
             }
 
 
-            ICADFileParser fileParser;
-            if (isOrcad)
-                fileParser = new OrcadFileParser();
-            else
-                fileParser = new KiCADFileParser();
+            ICADFileParser fileParser = CreateParser(projType);
 
             var pnpFileName = fileParser.GetDefaultPnPFileName(projName);
             if (!File.Exists(Path.Combine(filesFolder, pnpFileName)))
@@ -283,11 +259,11 @@ namespace AssemblyFileGenerator
             var bom = pnpData.GroupBy(x => new { x.FootprintName, x.Value })
                 .Select(x => new { x.Key.FootprintName, x.Key.Value, Count = x.Count() })
                 .ToList();
-            File.WriteAllLines(filesFolder + "bom.csv", bom.Select(x => string.Join(",", new string[] { x.FootprintName, x.Value, x.Count.ToString() })));
+            //File.WriteAllLines(filesFolder + "bom.csv", bom.Select(x => string.Join(",", new string[] { x.FootprintName, x.Value, x.Count.ToString() })));
 
             var res = pnpData.GroupBy(x => new { x.FootprintName, x.Value, x.IsTopSide })
                 .Select(x => new PnPFootprintGroup(x.Key.FootprintName, x.Key.Value, x.Key.IsTopSide, x.Count(), x.Select(_ => _.RefDes).ToList(), x.ToList()))
-                .OrderBy(x => x.FootprintName, new FootprintComparer(isOrcad)).ThenByDescending(x => x.Count)
+                .OrderBy(x => x.FootprintName, new FootprintComparer(projType)).ThenByDescending(x => x.Count)
                 .ToList();
 
             var topCopperFileName = Path.Combine(filesFolder, fileParser.GetCopperName(projName, true));
@@ -316,20 +292,32 @@ namespace AssemblyFileGenerator
                 return;
             }
 
-            CreateSideImage(pnpData.Where(x => x.IsTopSide).ToList(), topCopperFileName, topSilkFileName, false);
-            CreateSideImage(pnpData.Where(x => !x.IsTopSide).ToList(), bottomCopperFileName, bottomSilkFileName, true);
+            //CreateSideImage(pnpData.Where(x => x.IsTopSide).ToList(), topCopperFileName, topSilkFileName, false);
+            //CreateSideImage(pnpData.Where(x => !x.IsTopSide).ToList(), bottomCopperFileName, bottomSilkFileName, true);
 
             PdfDocument doc = new PdfDocument();
                 
             Console.WriteLine("Creating pages for top side...");
-            CreatePages(doc, res.Where(x => x.IsTopSide).ToList(), topCopperFileName, topSilkFileName, false);
+            CreatePages(doc, res.Where(x => x.IsTopSide).ToList(), topCopperFileName, topSilkFileName, false, projType, pnpOffsetX, pnpOffsetY);
             Console.WriteLine("Creating pages for bottom side...");
-            CreatePages(doc, res.Where(x => !x.IsTopSide).ToList(), bottomCopperFileName, bottomSilkFileName, true);
+            CreatePages(doc, res.Where(x => !x.IsTopSide).ToList(), bottomCopperFileName, bottomSilkFileName, true, projType, pnpOffsetX, pnpOffsetY);
 
             var resFile = Path.Combine(filesFolder, $"{outFileName}.pdf");
             doc.Save(resFile);
 
             Process.Start(resFile);
+        }
+
+        private static ICADFileParser CreateParser(ProjectType projectType)
+        {
+            switch(projectType)
+            {
+                case ProjectType.KiCad: return new KiCADFileParser();
+                case ProjectType.Orcad: return new OrcadFileParser();
+                case ProjectType.Altium: return new AltiumFileParser();
+                default:
+                    return null;
+            }
         }
 
         private static void CreateSideImage(IList<PnPFileEntry> parts, string copperName, string silkName, bool isBottom)
@@ -360,10 +348,18 @@ namespace AssemblyFileGenerator
             combinedImg.Save(isBottom ? "Bottom.bmp" : "Top.bmp");
         }
 
-        private static void CreatePages(PdfDocument doc, IList<PnPFootprintGroup> parts, string copperName, string silkName, bool isBottom)
+        private static void CreatePages(PdfDocument doc, IList<PnPFootprintGroup> parts, string copperName, string silkName, bool isBottom, 
+            ProjectType projectType, decimal pnpOffsetX, decimal pnpOffsetY)
         {
             decimal scaleX, scaleY, offsetX, offsetY;
             var combinedImg = CreateSideImage(copperName, silkName, false, out scaleX, out scaleY, out offsetX, out offsetY);
+            if (projectType == ProjectType.Altium)
+            {
+                offsetX = offsetX - pnpOffsetX;
+                offsetY = offsetY - pnpOffsetY;
+                /*offsetX = -3.8m;
+                offsetY = 0.2m;*/
+            }
             
             const int partsPerPage = 5;
 
@@ -440,6 +436,7 @@ namespace AssemblyFileGenerator
                 var pageStr = "Page " + (isBottom ? "B" : "T") + currPage.ToString();
                 gfx.DrawString(pageStr, font, (isBottom ? XBrushes.Blue : XBrushes.Red), new XPoint(pageX, currY));
                 var currIdx = 0;
+                var gx = Graphics.FromImage(currImg);
                 while (currY < 220 && currIdx < brushes.Length && currPart < parts.Count)
                 {
                     currY += 15;
@@ -467,7 +464,6 @@ namespace AssemblyFileGenerator
                     }
 
                     var brush = colors[currIdx];
-                    var gx = Graphics.FromImage(currImg);
                     foreach (var part in parts[currPart].Parts)
                     {
                         var partX = (int)((part.X - offsetX) * scaleX);
@@ -476,22 +472,26 @@ namespace AssemblyFileGenerator
                         var rect = new Rectangle(-15, -10, 30, 20);
                         if (part.FootprintName.Contains("0201"))
                             rect = new Rectangle(-5, -3, 10, 6);
-                        else if (part.FootprintName.Contains("0402"))
+                        else if (part.FootprintName.Contains("0402") || part.FootprintName.Contains("1005"))
                             rect = new Rectangle(-10, -5, 20, 10);
 
                         var mat = gx.Transform;
                         gx.TranslateTransform(partX, partY);
-                        gx.RotateTransform(part.Rotation);
+                        var rotAngle = part.Rotation;
+                        /*if (rotAngle == 360)
+                            rotAngle = 0;*/
+                        gx.RotateTransform(rotAngle);
                         gx.FillRectangle(brush, rect);
                         gx.Transform = mat;
                     }
-                    gx.Dispose();
                     currIdx++;
                     currPart++;
                 }
+                gx.Dispose();
                 Console.WriteLine($"Max currY = {currY}");
                 if (isBottom)
                     currImg.RotateFlip(RotateFlipType.RotateNoneFlipX);
+                //currImg.Save($"Page {(isBottom ? "B" : "T")}{currPage}.png", ImageFormat.Png);
                 var ximgCombinedImg = XImage.FromGdiPlusImage(currImg);
 
                 var aspect = (double)currImg.Width / currImg.Height;
@@ -545,10 +545,14 @@ namespace AssemblyFileGenerator
             offsetX = minX;
             offsetY = minY;
 
-            var topCopper = new GerberFileRender(Color.FromArgb(255, 128, 128, 128), isWriteBg ? Color.White : Color.FromArgb(0, 0, 0, 0))
+            var bgColor = isWriteBg ? Color.White : Color.FromArgb(0, 0, 0, 0);
+
+            var topCopper = new GerberFileRender(Color.FromArgb(255, 128, 128, 128), bgColor)
                 .CreateImageBitmap(topCopperFile, 20, minX, maxX, minY, maxY);
-            var topSilk = new GerberFileRender(Color.FromArgb(255, 0, 0, 255), isWriteBg ? Color.White : Color.FromArgb(0, 0, 0, 0))
+            //topCopper.Save(copperName + ".png", ImageFormat.Png);
+            var topSilk = new GerberFileRender(Color.FromArgb(255, 0, 0, 255), bgColor)
                 .CreateImageBitmap(topSilkFile, 20, minX, maxX, minY, maxY);
+            //topSilk.Save(silkName + ".png", ImageFormat.Png);
 
             var combinedImg = new Bitmap(topCopper.Width, topCopper.Height);
 
@@ -574,6 +578,9 @@ namespace AssemblyFileGenerator
              ColorMatrixFlag.Default,
              ColorAdjustType.Bitmap);
             gx.DrawImage(topCopper, fullRect, 0, 0, fullRect.Width, fullRect.Height, GraphicsUnit.Pixel, iaAlphaBlend);
+
+            var colorKey = Color.FromArgb(255, bgColor.R, bgColor.G, bgColor.B);
+            iaAlphaBlend.SetColorKey(colorKey, colorKey, ColorAdjustType.Bitmap);
             gx.DrawImage(topSilk, fullRect, 0, 0, fullRect.Width, fullRect.Height, GraphicsUnit.Pixel, iaAlphaBlend);
             gx.Dispose();
             return combinedImg;
