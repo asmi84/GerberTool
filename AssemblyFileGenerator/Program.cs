@@ -19,6 +19,7 @@ namespace AssemblyFileGenerator
 
         private static readonly Regex orcad_smd_passive_regex = new Regex("smd_(\\w+)_(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex orcad_smd_led_regex = new Regex("led_(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex altium_smd_passive_regex = new Regex("(\\w{3})C(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         class FootprintComparer : IComparer<string>
         {
@@ -35,6 +36,7 @@ namespace AssemblyFileGenerator
                 {
                     case ProjectType.Orcad: return CompareOrcad(x, y);
                     case ProjectType.KiCad: return CompareKicad(x, y);
+                    case ProjectType.Altium: return CompareAltium(x, y);
                     default: return CompareKicad(x, y);
                 }
                 //return _isOrcad ? CompareOrcad(x, y) : CompareKicad(x, y);
@@ -88,6 +90,41 @@ namespace AssemblyFileGenerator
                 if (!x_m.Success || !y_m.Success)
                     return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);*/
 
+            }
+
+            private static bool AltiumIsPassive(string x)
+            {
+                return x.StartsWith("CAPC", StringComparison.CurrentCultureIgnoreCase)
+                    || x.StartsWith("RESC", StringComparison.CurrentCultureIgnoreCase)
+                    || x.StartsWith("INDC", StringComparison.CurrentCultureIgnoreCase);
+            }
+
+            private int? AltiumTryExtractSMDSize(string str, out string partType)
+            {
+                partType = null;
+                var match = altium_smd_passive_regex.Match(str);
+                if (match.Success)
+                {
+                    partType = match.Groups[1].Value;
+                    return int.Parse(match.Groups[2].Value);
+                }
+                return null;
+            }
+
+            private int CompareAltium(string x, string y)
+            {
+                var x_smd_passive = AltiumIsPassive(x);
+                var y_smd_passive = AltiumIsPassive(y);
+                if (x_smd_passive & !y_smd_passive)
+                    return -1;
+                if (!x_smd_passive & y_smd_passive)
+                    return 1;
+                var xval = AltiumTryExtractSMDSize(x, out var xtype);
+                var yval = AltiumTryExtractSMDSize(y, out var ytype);
+                if (xval.HasValue && yval.HasValue)
+                    return xval.Value.CompareTo(yval.Value);
+                //if (!x_smd_passive && !y_smd_passive)
+                return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);
             }
         }
 

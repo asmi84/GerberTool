@@ -34,6 +34,7 @@ namespace AssemblyFileGenerator
             var result = new Dictionary<string, string>();
             var refDesIdx = -1;
             var valueIdx = -1;
+            var partNumberIdx = -1;
             string value = string.Empty;
             foreach (var line in File.ReadAllLines(fileName))
             {
@@ -54,6 +55,9 @@ namespace AssemblyFileGenerator
                             case "Value":
                                 valueIdx = i;
                                 break;
+                            case "PartNumber":
+                                partNumberIdx = i;
+                                break;
                         }
                     }
                     continue;
@@ -63,9 +67,10 @@ namespace AssemblyFileGenerator
                 parts = line.Split(new[] { "\"," }, System.StringSplitOptions.RemoveEmptyEntries);
                 var refs = parts[refDesIdx].Trim('"');
                 var val = parts[valueIdx].Trim('"');
+                var pn = partNumberIdx != -1 ? parts[partNumberIdx].Trim('"') : val;
                 foreach (var refdes in refs.Split(','))
                 {
-                    result.Add(refdes.Trim(), val);
+                    result.Add(refdes.Trim(), string.IsNullOrEmpty(val) ? pn : val);
                 }
             }
             return result;
