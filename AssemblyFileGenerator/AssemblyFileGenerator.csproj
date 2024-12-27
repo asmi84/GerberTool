@@ -9,9 +9,10 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>AssemblyFileGenerator</RootNamespace>
     <AssemblyName>AssemblyFileGenerator</AssemblyName>
-    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -53,9 +54,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AltiumFileParser.cs" />
+    <Compile Include="FootprintComparer.cs" />
     <Compile Include="ICADFileParser.cs" />
     <Compile Include="KiCADFileParser.cs" />
     <Compile Include="OrcadFileParser.cs" />
+    <Compile Include="PnPDataFilter.cs" />
     <Compile Include="PnPFileEntry.cs" />
     <Compile Include="PnPFootprintGroup.cs" />
     <Compile Include="Program.cs" />

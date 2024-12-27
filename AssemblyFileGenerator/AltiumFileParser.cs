@@ -6,6 +6,29 @@ namespace AssemblyFileGenerator
 {
     public class AltiumFileParser : ICADFileParser
     {
+        private readonly IDictionary<string, string> _footprintAliases = new Dictionary<string, string>();
+
+        private void LoadFootprintAliases(string fileName)
+        {
+            _footprintAliases.Clear();
+            if (File.Exists(fileName))
+            {
+                foreach (var line in File.ReadAllLines(fileName))
+                {
+                    var parts = line.Split(new[] { ':' }, System.StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length != 2)
+                        continue;
+                    var fpName = parts[0].Trim();
+                    var aliases = parts[1].Trim().Split(new[] { ',' }, System.StringSplitOptions.RemoveEmptyEntries);
+                    if (string.IsNullOrEmpty(fpName) || aliases.Length == 0)
+                        continue;
+                    foreach (var alias in aliases)
+                    {
+                        _footprintAliases[alias.Trim()] = fpName;
+                    }
+                }
+            }
+        }
         public string GetCopperName(string projName, bool isTop)
         {
             var files = Directory.GetFiles(projName, isTop ? "*.gtl" : "*.gbl");
@@ -56,6 +79,7 @@ namespace AssemblyFileGenerator
                                 valueIdx = i;
                                 break;
                             case "PartNumber":
+                            case "Part Number":
                                 partNumberIdx = i;
                                 break;
                         }
@@ -78,6 +102,9 @@ namespace AssemblyFileGenerator
 
         public IList<PnPFileEntry> ParseFile(string fileName)
         {
+            var path = Path.GetDirectoryName(fileName);
+            var aliasFile = Path.Combine(path, "footprint_groups.txt");
+            LoadFootprintAliases(aliasFile);
             var result = new List<PnPFileEntry>();
             var refdefIdx = -1;
             var layerIdx = -1;
@@ -129,6 +156,10 @@ namespace AssemblyFileGenerator
                     X = decimal.Parse(parts[centerXIdx].Trim('"')),
                     Y = decimal.Parse(parts[centerYIdx].Trim('"'))
                 };
+                if (_footprintAliases.ContainsKey(entry.FootprintName) )
+                {
+                    entry.FootprintName = _footprintAliases[entry.FootprintName];
+                }
                 /*if (!entry.IsTopSide)
                 {
                     entry.X = -entry.X;

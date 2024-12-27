@@ -315,6 +315,10 @@ namespace GerberParser
                     };
                 }
                 CalculateArc(center, beginPoint, cmdPoint, state, out angleF, out sweep, out rect);
+                if (sweep != 0 && Math.Abs(sweep) < 1f)
+                {
+                    sweep = 1f * Math.Sign(sweep);
+                }
                 if (sweep == 0)
                     sweep = state.Interpolation == InterpolationMode.ClockwiseCircular ? 360.0f : -360.0f;
                 if (state.IsInsideRegion)

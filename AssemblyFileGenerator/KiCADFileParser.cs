@@ -81,12 +81,18 @@ namespace AssemblyFileGenerator
 
         public string GetSilkName(string projName, bool isTop)
         {
-            return isTop ? projName + "-F_SilkS.gto" : projName + "-B_SilkS.gbo";
+            var fileName =  isTop ? projName + "-F_SilkS.gto" : projName + "-B_SilkS.gbo";
+            if (!File.Exists(Path.Combine(projName, fileName)))
+                fileName = isTop ? projName + "-F_SilkS.gbr" : projName + "-B_SilkS.gbr";
+            return fileName;
         }
 
         public string GetCopperName(string projName, bool isTop)
         {
-            return isTop ? projName + "-F_Cu.gtl" : projName + "-B_Cu.gbl";
+            var fileName = isTop ? projName + "-F_Cu.gtl" : projName + "-B_Cu.gbl";
+            if (!File.Exists(Path.Combine(projName, fileName)))
+                fileName = isTop ? projName + "-F_Cu.gbr" : projName + "-B_Cu.gbr";
+            return fileName;
         }
     }
 }

@@ -6,7 +6,6 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using GerberParser;
 using PdfSharp.Drawing;
@@ -16,146 +15,22 @@ namespace AssemblyFileGenerator
 {
     static class Program
     {
-
-        private static readonly Regex orcad_smd_passive_regex = new Regex("smd_(\\w+)_(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        private static readonly Regex orcad_smd_led_regex = new Regex("led_(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        private static readonly Regex altium_smd_passive_regex = new Regex("(\\w{3})C(\\d{4})", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-
-        class FootprintComparer : IComparer<string>
-        {
-            private readonly ProjectType projectType;
-
-            public FootprintComparer(ProjectType projType)
-            {
-                projectType = projType;
-            }
-
-            public int Compare(string x, string y)
-            {
-                switch (projectType)
-                {
-                    case ProjectType.Orcad: return CompareOrcad(x, y);
-                    case ProjectType.KiCad: return CompareKicad(x, y);
-                    case ProjectType.Altium: return CompareAltium(x, y);
-                    default: return CompareKicad(x, y);
-                }
-                //return _isOrcad ? CompareOrcad(x, y) : CompareKicad(x, y);
-            }
-
-            public int CompareKicad(string x, string y)
-            {
-                var x_smd_passive = x.StartsWith("R_", StringComparison.CurrentCultureIgnoreCase) | x.StartsWith("C_", StringComparison.CurrentCultureIgnoreCase);
-                var y_smd_passive = y.StartsWith("R_", StringComparison.CurrentCultureIgnoreCase) | y.StartsWith("C_", StringComparison.CurrentCultureIgnoreCase);
-                if (x_smd_passive & !y_smd_passive)
-                    return -1;
-                if (!x_smd_passive & y_smd_passive)
-                    return 1;
-                //if (!x_smd_passive && !y_smd_passive)
-                return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);
-            }
-
-            private int? TryExtractSMDSize(string str)
-            {
-                var match = orcad_smd_passive_regex.Match(str);
-                if (match.Success)
-                    return int.Parse(match.Groups[2].Value);
-                match = orcad_smd_led_regex.Match(str);
-                if (match.Success)
-                    return int.Parse(match.Groups[1].Value);
-                return null;
-            }
-
-            public int CompareOrcad(string x, string y)
-            {
-                var x_smd_passive = x.StartsWith("smd_res", StringComparison.CurrentCultureIgnoreCase) 
-                    | x.StartsWith("smd_cap", StringComparison.CurrentCultureIgnoreCase) 
-                    | x.StartsWith("led", StringComparison.CurrentCultureIgnoreCase)
-                    | x.StartsWith("smd_bead", StringComparison.CurrentCultureIgnoreCase);
-                var y_smd_passive = y.StartsWith("smd_res", StringComparison.CurrentCultureIgnoreCase) 
-                    | y.StartsWith("smd_cap", StringComparison.CurrentCultureIgnoreCase) 
-                    | y.StartsWith("led", StringComparison.CurrentCultureIgnoreCase)
-                    | y.StartsWith("smd_bead", StringComparison.CurrentCultureIgnoreCase);
-                if (x_smd_passive & !y_smd_passive)
-                    return -1;
-                if (!x_smd_passive & y_smd_passive)
-                    return 1;
-                var xval = TryExtractSMDSize(x);
-                var yval = TryExtractSMDSize(y);
-                if (xval.HasValue && yval.HasValue)
-                    return xval.Value.CompareTo(yval.Value);
-                //if (!x_smd_passive && !y_smd_passive)
-                return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);
-                /*var x_m = smd_passive_regex.Match(x);
-                var y_m = smd_passive_regex.Match(y);
-                if (!x_m.Success || !y_m.Success)
-                    return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);*/
-
-            }
-
-            private static bool AltiumIsPassive(string x)
-            {
-                return x.StartsWith("CAPC", StringComparison.CurrentCultureIgnoreCase)
-                    || x.StartsWith("RESC", StringComparison.CurrentCultureIgnoreCase)
-                    || x.StartsWith("INDC", StringComparison.CurrentCultureIgnoreCase);
-            }
-
-            private int? AltiumTryExtractSMDSize(string str, out string partType)
-            {
-                partType = null;
-                var match = altium_smd_passive_regex.Match(str);
-                if (match.Success)
-                {
-                    partType = match.Groups[1].Value;
-                    return int.Parse(match.Groups[2].Value);
-                }
-                return null;
-            }
-
-            private int CompareAltium(string x, string y)
-            {
-                var x_smd_passive = AltiumIsPassive(x);
-                var y_smd_passive = AltiumIsPassive(y);
-                if (x_smd_passive & !y_smd_passive)
-                    return -1;
-                if (!x_smd_passive & y_smd_passive)
-                    return 1;
-                var xval = AltiumTryExtractSMDSize(x, out var xtype);
-                var yval = AltiumTryExtractSMDSize(y, out var ytype);
-                if (xval.HasValue && yval.HasValue)
-                    return xval.Value.CompareTo(yval.Value);
-                //if (!x_smd_passive && !y_smd_passive)
-                return StringComparer.CurrentCultureIgnoreCase.Compare(x, y);
-            }
-        }
-
-        class PnPDataFilter
-        {
-            private readonly string _refTemplate;
-            private readonly bool _isWildcard;
-
-            public PnPDataFilter(string refTemplate)
-            {
-                _isWildcard = false;
-                _refTemplate = refTemplate;
-                if (_refTemplate.EndsWith("*"))
-                {
-                    _isWildcard = true;
-                    _refTemplate = _refTemplate.Replace("*", string.Empty);
-                }
-            }
-
-            public bool Match(string refName)
-            {
-                if (_isWildcard)
-                    return refName.StartsWith(_refTemplate, StringComparison.InvariantCultureIgnoreCase);
-                return refName.Equals(_refTemplate, StringComparison.InvariantCultureIgnoreCase);
-            }
-        }
-
         static void Usage()
         {
             Console.WriteLine("Usage:");
-            Console.WriteLine("AssemblyFileGenerator.exe -proj <project_name> -orcad|-kicad [-include_only [file_name]] [-out file_name] [-pnp_offset 000x111]");
+            Console.WriteLine("AssemblyFileGenerator.exe -proj <project_name> -orcad|-kicad|-altium [-include_only [file_name]] [-out file_name] [-pnp_offset 000x111]");
+        }
+
+        private static StreamWriter logFileWriter;
+
+        static void AddLogEntry(string line)
+        {
+            if (logFileWriter == null)
+            {
+                logFileWriter = new StreamWriter("cmd.log", true);
+            }
+            logFileWriter.WriteLine($"[{DateTime.Now}] {line}");
+            logFileWriter.Flush();
         }
 
         static void Main(string[] args)
@@ -165,6 +40,7 @@ namespace AssemblyFileGenerator
                 Usage();
                 return;
             }
+            AddLogEntry($"Command line: {Environment.CommandLine}");
             var projName = "S7_Min";
             var outFileName = projName;
             var projType = ProjectType.KiCad;
@@ -182,7 +58,7 @@ namespace AssemblyFileGenerator
                             if (i < args.Length - 1)
                             {
                                 projName = args[i + 1];
-                                outFileName = projName;
+                                outFileName = $"{projName}_Assembly";
                                 ++i;
                             }
                         }
@@ -282,15 +158,17 @@ namespace AssemblyFileGenerator
 
             var bomFileName = Path.Combine(filesFolder, fileParser.GetDefaultBoMFileName(projName));
             //var bomFileName = Directory.GetFiles(filesFolder, "*.BOM").FirstOrDefault();
-            if (string.IsNullOrEmpty(bomFileName))
+            if (string.IsNullOrEmpty(bomFileName) || !File.Exists(bomFileName))
             {
-                Console.WriteLine("ERROR - BOM file is not found! Exiting...");
+                Console.WriteLine($"ERROR - BOM file '{bomFileName}' is not found! Exiting...");
                 return;
             }
 
             var bomData = fileParser.LoadValuesFromBOMFile(bomFileName);
             foreach (var pnPFileEntry in pnpData)
             {
+                if (!bomData.ContainsKey(pnPFileEntry.RefDes))
+                    throw new Exception($"Unable to find RefDes {pnPFileEntry.RefDes} in the BOM file!");
                 pnPFileEntry.Value = bomData[pnPFileEntry.RefDes];
             }
             var bom = pnpData.GroupBy(x => new { x.FootprintName, x.Value })
